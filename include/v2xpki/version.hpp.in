@@ -1,0 +1,5 @@
+#pragma once
+
+namespace v2xpki {
+inline constexpr char kVersion[] = "@PROJECT_VERSION@";
+}

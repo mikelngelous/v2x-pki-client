@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+find_dependency(OpenSSL REQUIRED)
+find_dependency(CURL REQUIRED)
+
+include("${CMAKE_CURRENT_LIST_DIR}/v2xpki-targets.cmake")
+
+check_required_components(v2xpki)
