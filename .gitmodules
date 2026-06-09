@@ -1,0 +1,3 @@
+[submodule "third_party/asn1c-mouse"]
+	path = third_party/asn1c-mouse
+	url = https://github.com/mouse07410/asn1c.git
