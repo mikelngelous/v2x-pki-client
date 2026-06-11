@@ -22,11 +22,11 @@ struct PkiClientConfig {
     std::string ea_url;
     std::string aa_url;
     std::string tlm_url;
-    std::string ma_url;              // TODO: misbehaviour reporting (TS 103 759)
+    std::string ma_url; // TODO: misbehaviour reporting (TS 103 759)
     std::string ca_bundle_path;
     std::string trust_dir;
     std::string keystore_dir;
-    std::string tlm_hid8;            // pinned TLM HashedId8 (uppercase hex)
+    std::string tlm_hid8; // pinned TLM HashedId8 (uppercase hex)
     std::chrono::seconds timeout{30};
     bool verify_tls = true;
 };
@@ -42,16 +42,12 @@ public:
     // --- PKI operations ---
 
     // Request Enrolment Credential (EC) from EA
-    Result<CertInfo> request_enrolment_credential(
-        const KeyHandle& canonical,
-        const EcRecord& rec);
+    Result<CertInfo> request_enrolment_credential(const KeyHandle& canonical, const EcRecord& rec);
 
     // Request Authorization Ticket (AT) from AA.
     // ec_cert must be the real EC cert (with cert_bytes and hashed_id_8).
-    Result<CertInfo> request_authorization_ticket(
-        const KeyHandle& ec_handle,
-        const CertInfo& ec_cert,
-        const AtRecord& rec);
+    Result<CertInfo> request_authorization_ticket(const KeyHandle& ec_handle,
+                                                  const CertInfo& ec_cert, const AtRecord& rec);
 
     // --- Discovery ---
 
@@ -62,8 +58,7 @@ public:
     Result<CertInfo> fetch_cert_by_name(const std::string& name);
 
     // GET /lookup/{hid8} → cert COER
-    Result<CertInfo> fetch_cert_by_hashed_id_8(
-        const std::array<uint8_t, 8>& hid8);
+    Result<CertInfo> fetch_cert_by_hashed_id_8(const std::array<uint8_t, 8>& hid8);
 
     // --- CCMS trust discovery (TS 102 941 Annex D + CPOC v3.2) ---
 
@@ -74,8 +69,7 @@ public:
     // --- Legacy trust list (kept for backward compat) ---
 
     Result<std::vector<CertInfo>> fetch_ectl();
-    Result<std::vector<CertInfo>> fetch_crl(
-        const std::array<uint8_t, 8>& rca_hid8);
+    Result<std::vector<CertInfo>> fetch_crl(const std::array<uint8_t, 8>& rca_hid8);
 
     // --- Accessors ---
     const TrustChain& trust_chain() const;
@@ -86,4 +80,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace v2xpki
+} // namespace v2xpki

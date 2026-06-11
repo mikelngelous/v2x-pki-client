@@ -7,19 +7,25 @@
 #include <string>
 #include <vector>
 
+#include "v2xpki/sizes.hpp"
+
 namespace v2xpki {
 
 struct CertInfo {
-    std::vector<uint8_t> cert_bytes;          // COER-encoded cert (wire format)
-    std::array<uint8_t, 8> hashed_id_8;       // SHA-256(cert_bytes)[-8:]
-    std::vector<uint8_t> public_key;          // verification key P-256 uncompressed (65 bytes)
-    std::vector<uint8_t> encryption_key;      // ECIES encryption key P-256 uncompressed (65 bytes); empty if cert has none
-    std::array<uint8_t, 8> issuer_hash_id_8;  // issuer HID8 (0 if self-signed)
-    bool is_self_signed;
-    std::vector<uint8_t> tbs_bytes;           // toBeSigned COER (for signature verification)
-    std::vector<uint8_t> signature_r;         // 32 bytes
-    std::vector<uint8_t> signature_s;         // 32 bytes
-    std::string label;                        // descriptive name
+    std::vector<uint8_t> cert_bytes; // COER-encoded cert (wire format)
+    std::array<uint8_t, 8> hashed_id_8; // SHA-256(cert_bytes)[-8:]
+    std::vector<uint8_t> public_key; // verification key uncompressed (65 or 97 bytes)
+    std::vector<uint8_t>
+        encryption_key; // ECIES encryption key uncompressed; empty if cert has none
+    Curve
+        enc_curve = Curve::NistP256; // encryption key curve (eciesNistP256 vs eciesBrainpoolP256r1)
+    std::array<uint8_t, 8> issuer_hash_id_8; // issuer HID8 (0 if self-signed)
+    bool is_self_signed = false;
+    std::vector<uint8_t> tbs_bytes; // toBeSigned COER (for signature verification)
+    std::vector<uint8_t> signature_r; // 32 or 48 bytes
+    std::vector<uint8_t> signature_s; // 32 or 48 bytes
+    Curve curve = Curve::NistP256; // detected from PublicVerificationKey variant
+    std::string label; // descriptive name
 };
 
 class TrustChain {
@@ -42,10 +48,12 @@ public:
 
     size_t size() const { return certs_.size(); }
 
+    // IEEE 1609.2 §5.3.1 certificate signature verification (double-hash).
+    bool verify_cert_signature(const CertInfo& cert, const CertInfo& issuer) const;
+
 private:
     std::map<std::array<uint8_t, 8>, CertInfo> certs_;
 
-    bool verify_cert_signature(const CertInfo& cert, const CertInfo& issuer) const;
     std::vector<CertInfo> get_by_prefix(const std::string& prefix) const;
 };
 
@@ -53,27 +61,23 @@ private:
 namespace cert_utils {
 
 // Encode ToBeSignedCertificate to UPER bytes.
-std::vector<uint8_t> encode_tbs_uper(
-    const std::string& name,
-    const std::vector<uint8_t>& public_key,  // 65 bytes uncompressed
-    bool is_ca,
-    uint32_t start_time,
-    uint16_t duration_years);
+std::vector<uint8_t> encode_tbs_uper(const std::string& name,
+                                     const std::vector<uint8_t>&
+                                         public_key, // 65 bytes uncompressed
+                                     bool is_ca, uint32_t start_time, uint16_t duration_years);
 
-// Build full CertificateBase, sign with issuer key, encode UPER → CertInfo
-std::optional<CertInfo> build_signed_cert(
-    const std::string& name,
-    const std::vector<uint8_t>& subject_public_key,
-    const std::vector<uint8_t>& issuer_private_key,
-    const std::array<uint8_t, 8>& issuer_hid8,
-    bool is_ca,
-    bool is_self_signed);
+// Build full CertificateBase, sign with issuer key, encode COER → CertInfo
+std::optional<CertInfo> build_signed_cert(const std::string& name,
+                                          const std::vector<uint8_t>& subject_public_key,
+                                          const std::vector<uint8_t>& issuer_private_key,
+                                          const std::array<uint8_t, 8>& issuer_hid8, bool is_ca,
+                                          bool is_self_signed,
+                                          const std::vector<uint8_t>& issuer_cert_bytes = {});
 
 // Build self-signed root cert
-std::optional<CertInfo> build_root_cert(
-    const std::string& name,
-    const std::vector<uint8_t>& public_key,
-    const std::vector<uint8_t>& private_key);
+std::optional<CertInfo> build_root_cert(const std::string& name,
+                                        const std::vector<uint8_t>& public_key,
+                                        const std::vector<uint8_t>& private_key);
 
-}  // namespace cert_utils
-}  // namespace v2xpki
+} // namespace cert_utils
+} // namespace v2xpki

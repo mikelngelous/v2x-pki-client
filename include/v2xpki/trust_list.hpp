@@ -35,23 +35,25 @@ struct TrustTopology {
     std::vector<DcInfo> dcs;
     bool ectl_signature_verified = false;
     bool ctl_signature_verified = false;
+    uint32_t ectl_next_update = 0;
+    uint32_t ctl_next_update = 0;
+    bool ectl_expired = false;
+    bool ctl_expired = false;
 };
 
 // Verifies the TLM signature when tlm_pubkey/tlm_cert_coer are given.
-Result<TrustTopology> decode_ectl(
-    const std::vector<uint8_t>& coer,
-    const std::vector<uint8_t>& tlm_pubkey = {},
-    const std::vector<uint8_t>& tlm_cert_coer = {});
+Result<TrustTopology> decode_ectl(const std::vector<uint8_t>& coer,
+                                  const std::vector<uint8_t>& tlm_pubkey = {},
+                                  const std::vector<uint8_t>& tlm_cert_coer = {});
 
 // Verifies the RCA signature when rca_pubkey/rca_cert_coer are given.
-Result<TrustTopology> decode_rca_ctl(
-    const std::vector<uint8_t>& coer,
-    const std::vector<uint8_t>& rca_pubkey = {},
-    const std::vector<uint8_t>& rca_cert_coer = {});
+Result<TrustTopology> decode_rca_ctl(const std::vector<uint8_t>& coer,
+                                     const std::vector<uint8_t>& rca_pubkey = {},
+                                     const std::vector<uint8_t>& rca_cert_coer = {});
 
 std::string hid8_hex_upper(const std::array<uint8_t, 8>& hid8);
 
 // 16 hex chars, case-insensitive.
 std::optional<std::array<uint8_t, 8>> parse_hid8_hex(const std::string& hex);
 
-}  // namespace v2xpki
+} // namespace v2xpki

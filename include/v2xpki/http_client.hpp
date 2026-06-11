@@ -20,11 +20,11 @@ struct HttpResponse {
 
 struct HttpClientConfig {
     std::string ca_bundle_path;
-    std::chrono::seconds timeout{30};               // total transfer timeout
+    std::chrono::seconds timeout{30}; // total transfer timeout
     bool verify_tls = true;
-    std::chrono::seconds connect_timeout{10};       // connection-phase timeout
-    unsigned max_retries = 2;                        // extra attempts on transient failures
-    std::chrono::milliseconds retry_backoff{500};   // base backoff; doubles each retry (exponential)
+    std::chrono::seconds connect_timeout{10}; // connection-phase timeout
+    unsigned max_retries = 2; // extra attempts on transient failures
+    std::chrono::milliseconds retry_backoff{500}; // base backoff; doubles each retry (exponential)
 };
 
 // Thread-safety: an HttpClient instance is NOT thread-safe — use one per thread.
@@ -43,14 +43,12 @@ public:
     HttpClient& operator=(const HttpClient&) = delete;
 
     Result<HttpResponse> get(const std::string& url);
-    Result<HttpResponse> post(
-        const std::string& url,
-        const std::vector<uint8_t>& body,
-        const std::string& content_type = "application/x-its-request");
+    Result<HttpResponse> post(const std::string& url, const std::vector<uint8_t>& body,
+                              const std::string& content_type = "application/x-its-request");
 
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace v2xpki
+} // namespace v2xpki
