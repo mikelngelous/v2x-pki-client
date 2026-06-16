@@ -1,7 +1,7 @@
 # v2x-pki-client — ETSI C-ITS PKI client.
 
 cmake_minimum_required(VERSION 3.16)
-project(v2xpki VERSION 0.7.0 LANGUAGES C CXX)
+project(v2xpki VERSION 0.1.0 LANGUAGES C CXX)
 
 find_package(OpenSSL REQUIRED)
 find_package(CURL REQUIRED)
@@ -14,7 +14,22 @@ configure_file(
     @ONLY
 )
 
-enable_testing()
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(V2XPKI_BUILD_TESTS_DEFAULT ON)
+else()
+    set(V2XPKI_BUILD_TESTS_DEFAULT OFF)
+endif()
+option(V2XPKI_BUILD_TESTS "Build v2xpki tests" ${V2XPKI_BUILD_TESTS_DEFAULT})
+
+if(V2XPKI_BUILD_TESTS)
+    enable_testing()
+    include(FetchContent)
+    FetchContent_Declare(googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.15.2)
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+endif()
 
 add_subdirectory(src)
 add_subdirectory(tools)
