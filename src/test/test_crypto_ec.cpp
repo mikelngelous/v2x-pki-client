@@ -290,6 +290,7 @@ INSTANTIATE_TEST_SUITE_P(AllCurves, CryptoMultiCurve,
                                  case Curve::NistP256: return std::string("NistP256");
                                  case Curve::BrainpoolP256r1: return std::string("BrainpoolP256r1");
                                  case Curve::BrainpoolP384r1: return std::string("BrainpoolP384r1");
+                                 case Curve::NistP384: return std::string("NistP384");
                              }
                              return std::string("Unknown");
                          });
