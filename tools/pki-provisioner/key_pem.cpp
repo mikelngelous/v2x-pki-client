@@ -23,7 +23,8 @@ bool atomic_write(const std::string &path, const std::vector<uint8_t> &data) {
     std::string tmp = path + ".tmp";
     FILE *f = fopen(tmp.c_str(), "wb");
     if (!f) {
-        fprintf(stderr, "[pki-provisioner] ERROR: cannot open %s: %s\n", tmp.c_str(), strerror(errno));
+        fprintf(stderr, "[pki-provisioner] ERROR: cannot open %s: %s\n", tmp.c_str(),
+                strerror(errno));
         return false;
     }
     if (fwrite(data.data(), 1, data.size(), f) != data.size()) {
@@ -95,10 +96,10 @@ bool atomic_write_key_pem(const std::string &path, const std::vector<uint8_t> &p
     // SEC1 PEM: -----BEGIN EC PRIVATE KEY-----
     BIO *bio = BIO_new(BIO_s_mem());
     OSSL_ENCODER_CTX
-        *ectx = OSSL_ENCODER_CTX_new_for_pkey(pkey,
-                                              OSSL_KEYMGMT_SELECT_KEYPAIR |
-                                                  OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS,
-                                              "PEM", "EC", nullptr);
+    *ectx = OSSL_ENCODER_CTX_new_for_pkey(pkey,
+                                          OSSL_KEYMGMT_SELECT_KEYPAIR |
+                                              OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS,
+                                          "PEM", "EC", nullptr);
     bool enc_ok = bio && ectx && OSSL_ENCODER_to_bio(ectx, bio) == 1;
     OSSL_ENCODER_CTX_free(ectx);
     EVP_PKEY_free(pkey);

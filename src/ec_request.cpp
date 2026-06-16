@@ -154,16 +154,16 @@ Result<EcRequestResult> encode_ec_request(const EcRequestDescription& desc, cons
 
     // EtsiTs102941Data{enrolmentRequest}: build the COER directly to preserve the PoP signed bytes
     std::vector<uint8_t> etsi_bytes;
-    etsi_bytes.push_back(0x01);  // version v1
-    etsi_bytes.push_back(0x80);  // CHOICE [0] enrolmentRequest
+    etsi_bytes.push_back(0x01); // version v1
+    etsi_bytes.push_back(0x80); // CHOICE [0] enrolmentRequest
     etsi_bytes.insert(etsi_bytes.end(), pop_signed_bytes.begin(), pop_signed_bytes.end());
 
-    // Outer signed envelope (TS 102 941 §6.2.3.2.1): the ECIES plaintext, signed with the canonical key.
+    // Outer signed envelope (TS 102 941 §6.2.3.2.1): ECIES plaintext signed with canonical key.
     auto outer_signed_bytes = sign::build_self_signed(etsi_bytes, canonical_private_key, curve);
     if (outer_signed_bytes.empty()) return Error::Crypto;
 
-    /* ECIES to the EA's encryption key, not its verification key (test certs without one fall back to
-       public_key). TS 102 941 §B.2: P1 = SHA-256(recipient cert COER). ECIES is always P-256
+    /* ECIES to the EA's encryption key, not its verification key (test certs without one fall back
+       to public_key). TS 102 941 §B.2: P1 = SHA-256(recipient cert COER). ECIES is always P-256
        (NIST or Brainpool), even for P-384 certs.
     */
     const std::vector<uint8_t>& ea_enc_key = ea_cert.encryption_key.empty()
