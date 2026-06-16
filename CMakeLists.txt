@@ -4,6 +4,11 @@ cmake_minimum_required(VERSION 3.16)
 project(v2xpki VERSION 0.1.0 LANGUAGES C CXX)
 
 find_package(OpenSSL REQUIRED)
+if(OPENSSL_VERSION VERSION_LESS 3.0.13)
+    message(FATAL_ERROR
+        "OpenSSL ${OPENSSL_VERSION}: 3.0.2-series EVP_PKEY regression breaks ECDSA/ECIES. "
+        "Require >= 3.0.13 — pass -DOPENSSL_ROOT_DIR=/path/to/openssl-3.5.x.")
+endif()
 find_package(CURL REQUIRED)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
