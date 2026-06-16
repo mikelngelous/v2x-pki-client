@@ -1,0 +1,180 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 3 * * *'
+
+# - integration_castell (live) runs only on push-to-main and nightly, never on PRs/forks.
+# - OpenSSL pinned to 3.5.1: 3.0.2 has an EVP_PKEY regression that breaks ECDSA/ECIES.
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install clang tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang-format-14 clang-tidy-14 cmake g++ make autoconf automake libtool \
+            libcurl4-openssl-dev ca-certificates wget
+
+      - name: Cache OpenSSL 3.5
+        id: cache-openssl-lint
+        uses: actions/cache@v4
+        with:
+          path: ~/openssl
+          key: openssl-3.5.1-${{ runner.os }}
+
+      - name: Build OpenSSL 3.5
+        if: steps.cache-openssl-lint.outputs.cache-hit != 'true'
+        run: |
+          wget -q https://github.com/openssl/openssl/releases/download/openssl-3.5.1/openssl-3.5.1.tar.gz
+          tar xf openssl-3.5.1.tar.gz
+          cd openssl-3.5.1
+          ./Configure --prefix=$HOME/openssl --libdir=lib shared
+          make -j"$(nproc)"
+          make install_sw
+
+      - name: Generate ASN.1 codecs
+        run: ./scripts/regen-codecs.sh
+
+      - name: clang-format check
+        run: |
+          clang-format-14 --dry-run --Werror \
+            src/*.cpp src/cli/*.cpp src/cli/*.hpp \
+            src/internal/*.cpp src/internal/*.hpp \
+            src/test/*.cpp include/v2xpki/*.hpp \
+            tools/pki-provisioner/*.cpp tools/pki-provisioner/*.hpp
+
+      - name: clang-tidy check
+        run: |
+          cmake -B build \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_PREFIX_PATH=$HOME/openssl \
+            -DOPENSSL_ROOT_DIR=$HOME/openssl
+          clang-tidy-14 --extra-arg=-std=c++17 -p build --warnings-as-errors='*' \
+            src/*.cpp src/cli/*.cpp src/internal/*.cpp tools/pki-provisioner/*.cpp
+
+  build-test:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        compiler:
+          - { cc: gcc, cxx: g++ }
+          - { cc: clang, cxx: clang++ }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake g++ clang make autoconf automake libtool \
+            libcurl4-openssl-dev valgrind ca-certificates wget
+
+      - name: Cache OpenSSL 3.5
+        id: cache-openssl
+        uses: actions/cache@v4
+        with:
+          path: ~/openssl
+          key: openssl-3.5.1-${{ runner.os }}
+
+      - name: Build OpenSSL 3.5
+        if: steps.cache-openssl.outputs.cache-hit != 'true'
+        run: |
+          wget -q https://github.com/openssl/openssl/releases/download/openssl-3.5.1/openssl-3.5.1.tar.gz
+          tar xf openssl-3.5.1.tar.gz
+          cd openssl-3.5.1
+          ./Configure --prefix=$HOME/openssl --libdir=lib shared
+          make -j"$(nproc)"
+          make install_sw
+
+      - name: Generate ASN.1 codecs
+        run: ./scripts/regen-codecs.sh
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_C_COMPILER=${{ matrix.compiler.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler.cxx }} \
+            -DCMAKE_PREFIX_PATH=$HOME/openssl \
+            -DOPENSSL_ROOT_DIR=$HOME/openssl \
+            -DCMAKE_INSTALL_RPATH=$HOME/openssl/lib
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Test (offline suites)
+        run: |
+          export LD_LIBRARY_PATH=$HOME/openssl/lib
+          ctest --test-dir build --output-on-failure -E integration_castell
+
+      - name: Valgrind (memory safety on codec/crypto/trust-list paths)
+        if: matrix.compiler.cc == 'gcc'
+        run: |
+          export LD_LIBRARY_PATH=$HOME/openssl/lib
+          for t in test_round_trip_pki test_crypto_ec test_ec_request \
+                   test_at_request test_trust_chain test_trust_list; do
+            echo "== valgrind $t =="
+            valgrind --leak-check=full --show-leak-kinds=definite \
+                     --error-exitcode=99 ./build/$t
+          done
+
+  integration:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake g++ make autoconf automake libtool \
+            libcurl4-openssl-dev ca-certificates wget
+
+      - name: Cache OpenSSL 3.5
+        id: cache-openssl-it
+        uses: actions/cache@v4
+        with:
+          path: ~/openssl
+          key: openssl-3.5.1-${{ runner.os }}
+
+      - name: Build OpenSSL 3.5
+        if: steps.cache-openssl-it.outputs.cache-hit != 'true'
+        run: |
+          wget -q https://github.com/openssl/openssl/releases/download/openssl-3.5.1/openssl-3.5.1.tar.gz
+          tar xf openssl-3.5.1.tar.gz
+          cd openssl-3.5.1
+          ./Configure --prefix=$HOME/openssl --libdir=lib shared
+          make -j"$(nproc)"
+          make install_sw
+
+      - name: Generate ASN.1 codecs
+        run: ./scripts/regen-codecs.sh
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_PREFIX_PATH=$HOME/openssl \
+            -DOPENSSL_ROOT_DIR=$HOME/openssl \
+            -DCMAKE_INSTALL_RPATH=$HOME/openssl/lib
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Integration (live Castell)
+        run: |
+          export LD_LIBRARY_PATH=$HOME/openssl/lib
+          ctest --test-dir build --output-on-failure -R integration_castell
