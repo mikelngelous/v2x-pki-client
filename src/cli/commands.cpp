@@ -10,6 +10,8 @@
 #include "v2xpki/trust_list.hpp"
 #include "v2xpki/sizes.hpp"
 
+#include "internal/cert_parse.hpp"
+
 extern "C" {
 #include "Ieee1609Dot2Data.h"
 #include "Ieee1609Dot2Content.h"
@@ -563,6 +565,8 @@ int cmd_request_at(const Args &a) {
 
     CertInfo ec_ci;
     ec_ci.cert_bytes = ec_cert_bytes;
+    // ecSignature is signed with the EC cert's curve
+    ec_ci.curve = cert::from_coer(ec_cert_bytes).curve;
     auto ec_h = compute_hid8(ec_cert_bytes);
     ec_ci.hashed_id_8 = ec_h;
     ec_ci.public_key = kp->public_key;
@@ -574,7 +578,9 @@ int cmd_request_at(const Args &a) {
     auto aa_hid8 = compute_hid8(aa_resp->body);
     auto ea_hid8_val = ea_resp ? compute_hid8(ea_resp->body) : std::array<uint8_t, 8>{};
 
-    Curve curve = parse_curve(a.curve_str);
+    Curve curve = ec_ci.curve;
+    if (!a.curve_str.empty() && parse_curve(a.curve_str) != curve)
+        std::cerr << "warning: --curve overridden by EC cert curve (" << to_string(curve) << ")\n";
 
     AtRecord rec;
     rec.at_public_key = kp->public_key;
