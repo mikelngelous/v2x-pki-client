@@ -9,10 +9,12 @@
 #include <openssl/rand.h>
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <memory>
 
 #include "v2xpki/sizes.hpp"
+#include "v2xpki/static_bytes.hpp"
 #include "internal/openssl_ptr.hpp"
 
 namespace v2xpki::crypto {
@@ -122,8 +124,7 @@ EvpPkeyPtr evp_pkey_from_public(const std::vector<uint8_t>& pub, Curve curve) {
     return EvpPkeyPtr(pkey);
 }
 
-bool extract_rs_from_der(const uint8_t* der, size_t der_len, std::vector<uint8_t>& r_out,
-                         std::vector<uint8_t>& s_out, std::size_t slen) {
+bool extract_rs_from_der(const uint8_t* der, size_t der_len, Signature& sig_out, std::size_t slen) {
     const uint8_t* p = der;
     ECDSA_SIG* sig = d2i_ECDSA_SIG(nullptr, &p, static_cast<long>(der_len));
     if (!sig) return false;
@@ -132,21 +133,26 @@ bool extract_rs_from_der(const uint8_t* der, size_t der_len, std::vector<uint8_t
     const BIGNUM* s_bn = nullptr;
     ECDSA_SIG_get0(sig, &r_bn, &s_bn);
 
-    r_out.resize(slen, 0);
-    s_out.resize(slen, 0);
-    BN_bn2binpad(r_bn, r_out.data(), static_cast<int>(slen));
-    BN_bn2binpad(s_bn, s_out.data(), static_cast<int>(slen));
-
+    std::array<uint8_t, kP384ScalarLen> r_buf{};
+    std::array<uint8_t, kP384ScalarLen> s_buf{};
+    BN_bn2binpad(r_bn, r_buf.data(), static_cast<int>(slen));
+    BN_bn2binpad(s_bn, s_buf.data(), static_cast<int>(slen));
     ECDSA_SIG_free(sig);
+
+    auto r_sb = StaticBytes<kP384ScalarLen>::from(r_buf.data(), slen);
+    auto s_sb = StaticBytes<kP384ScalarLen>::from(s_buf.data(), slen);
+    if (!r_sb || !s_sb) return false;
+    sig_out.r = *r_sb;
+    sig_out.s = *s_sb;
     return true;
 }
 
-std::vector<uint8_t> build_der_from_rs(const std::vector<uint8_t>& r,
-                                       const std::vector<uint8_t>& s) {
+std::vector<uint8_t> build_der_from_rs(const uint8_t* r, size_t rlen, const uint8_t* s,
+                                       size_t slen) {
     ECDSA_SIG* sig = ECDSA_SIG_new();
     if (!sig) return {};
-    BIGNUM* r_bn = BN_bin2bn(r.data(), static_cast<int>(r.size()), nullptr);
-    BIGNUM* s_bn = BN_bin2bn(s.data(), static_cast<int>(s.size()), nullptr);
+    BIGNUM* r_bn = BN_bin2bn(r, static_cast<int>(rlen), nullptr);
+    BIGNUM* s_bn = BN_bin2bn(s, static_cast<int>(slen), nullptr);
     if (!r_bn || !s_bn) {
         BN_free(r_bn);
         BN_free(s_bn);
@@ -230,7 +236,10 @@ std::optional<KeyPair> generate_keypair(Curve curve) {
         return std::nullopt;
     pub_bytes.resize(pub_len);
 
-    return KeyPair{std::move(pub_bytes), std::move(priv_bytes)};
+    auto pub_sb = StaticBytes<kP384PublicKeyLen>::from(pub_bytes);
+    auto priv_sb = StaticBytes<kP384ScalarLen>::from(priv_bytes);
+    if (!pub_sb || !priv_sb) return std::nullopt;
+    return KeyPair{*pub_sb, *priv_sb};
 }
 
 // ============ ECDSA ============
@@ -258,7 +267,7 @@ std::optional<Signature> ecdsa_sign(const std::vector<uint8_t>& private_key,
     der_sig.resize(sig_len);
 
     Signature result;
-    if (!extract_rs_from_der(der_sig.data(), der_sig.size(), result.r, result.s, kP256ScalarLen))
+    if (!extract_rs_from_der(der_sig.data(), der_sig.size(), result, kP256ScalarLen))
         return std::nullopt;
 
     return result;
@@ -294,8 +303,7 @@ std::optional<Signature> ecdsa_sign_digest(const std::vector<uint8_t>& private_k
     der_sig.resize(sig_len);
 
     Signature result;
-    if (!extract_rs_from_der(der_sig.data(), der_sig.size(), result.r, result.s, slen))
-        return std::nullopt;
+    if (!extract_rs_from_der(der_sig.data(), der_sig.size(), result, slen)) return std::nullopt;
 
     return result;
 }
@@ -306,7 +314,7 @@ bool ecdsa_verify(const std::vector<uint8_t>& public_key, const std::vector<uint
     auto pkey = evp_pkey_from_public(public_key, Curve::NistP256);
     if (!pkey) return false;
 
-    auto der_sig = build_der_from_rs(sig.r, sig.s);
+    auto der_sig = build_der_from_rs(sig.r.data(), sig.r.size(), sig.s.data(), sig.s.size());
 
     EvpMdCtxPtr md_ctx(EVP_MD_CTX_new());
     if (!md_ctx) return false;
@@ -332,7 +340,7 @@ bool ecdsa_verify_digest(const std::vector<uint8_t>& public_key, const std::vect
     auto pkey = evp_pkey_from_public(public_key, curve);
     if (!pkey) return false;
 
-    auto der_sig = build_der_from_rs(sig.r, sig.s);
+    auto der_sig = build_der_from_rs(sig.r.data(), sig.r.size(), sig.s.data(), sig.s.size());
 
     EvpPkeyCtxPtr ctx(EVP_PKEY_CTX_new(pkey.get(), nullptr));
     if (!ctx) return false;

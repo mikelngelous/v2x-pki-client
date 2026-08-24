@@ -20,12 +20,12 @@ TEST(CryptoP256, SignVerifyA) {
     ASSERT_TRUE(kp.has_value());
 
     std::vector<uint8_t> msg = {0xDE, 0xAD, 0xBE, 0xEF};
-    auto sig = ecdsa_sign(kp->private_key, msg);
+    auto sig = ecdsa_sign(kp->private_key.to_vector(), msg);
     ASSERT_TRUE(sig.has_value());
     EXPECT_EQ(sig->r.size(), 32u);
     EXPECT_EQ(sig->s.size(), 32u);
 
-    EXPECT_TRUE(ecdsa_verify(kp->public_key, msg, *sig));
+    EXPECT_TRUE(ecdsa_verify(kp->public_key.to_vector(), msg, *sig));
 }
 
 TEST(CryptoP256, SignVerifyB) {
@@ -33,9 +33,9 @@ TEST(CryptoP256, SignVerifyB) {
     ASSERT_TRUE(kp.has_value());
 
     std::vector<uint8_t> msg(256, 0x42);
-    auto sig = ecdsa_sign(kp->private_key, msg);
+    auto sig = ecdsa_sign(kp->private_key.to_vector(), msg);
     ASSERT_TRUE(sig.has_value());
-    EXPECT_TRUE(ecdsa_verify(kp->public_key, msg, *sig));
+    EXPECT_TRUE(ecdsa_verify(kp->public_key.to_vector(), msg, *sig));
 }
 
 TEST(CryptoP256, SignVerifyEmpty) {
@@ -43,9 +43,9 @@ TEST(CryptoP256, SignVerifyEmpty) {
     ASSERT_TRUE(kp.has_value());
 
     std::vector<uint8_t> msg;
-    auto sig = ecdsa_sign(kp->private_key, msg);
+    auto sig = ecdsa_sign(kp->private_key.to_vector(), msg);
     ASSERT_TRUE(sig.has_value());
-    EXPECT_TRUE(ecdsa_verify(kp->public_key, msg, *sig));
+    EXPECT_TRUE(ecdsa_verify(kp->public_key.to_vector(), msg, *sig));
 }
 
 TEST(CryptoP256, SignDifferentKeys) {
@@ -54,8 +54,8 @@ TEST(CryptoP256, SignDifferentKeys) {
     ASSERT_TRUE(kp1.has_value() && kp2.has_value());
 
     std::vector<uint8_t> msg = {0x01, 0x02, 0x03};
-    auto sig1 = ecdsa_sign(kp1->private_key, msg);
-    auto sig2 = ecdsa_sign(kp2->private_key, msg);
+    auto sig1 = ecdsa_sign(kp1->private_key.to_vector(), msg);
+    auto sig2 = ecdsa_sign(kp2->private_key.to_vector(), msg);
     ASSERT_TRUE(sig1.has_value() && sig2.has_value());
     EXPECT_FALSE(sig1->r == sig2->r && sig1->s == sig2->s);
 }
@@ -65,11 +65,11 @@ TEST(CryptoP256, VerifyWrongMessage) {
     ASSERT_TRUE(kp.has_value());
 
     std::vector<uint8_t> msg = {0xAA, 0xBB};
-    auto sig = ecdsa_sign(kp->private_key, msg);
+    auto sig = ecdsa_sign(kp->private_key.to_vector(), msg);
     ASSERT_TRUE(sig.has_value());
 
     std::vector<uint8_t> wrong = {0xCC, 0xDD};
-    EXPECT_FALSE(ecdsa_verify(kp->public_key, wrong, *sig));
+    EXPECT_FALSE(ecdsa_verify(kp->public_key.to_vector(), wrong, *sig));
 }
 
 TEST(CryptoP256, VerifyWrongPubkey) {
@@ -78,9 +78,9 @@ TEST(CryptoP256, VerifyWrongPubkey) {
     ASSERT_TRUE(kp1.has_value() && kp2.has_value());
 
     std::vector<uint8_t> msg = {0x11, 0x22, 0x33};
-    auto sig = ecdsa_sign(kp1->private_key, msg);
+    auto sig = ecdsa_sign(kp1->private_key.to_vector(), msg);
     ASSERT_TRUE(sig.has_value());
-    EXPECT_FALSE(ecdsa_verify(kp2->public_key, msg, *sig));
+    EXPECT_FALSE(ecdsa_verify(kp2->public_key.to_vector(), msg, *sig));
 }
 
 TEST(CryptoP256, EcdhConvergence) {
@@ -88,8 +88,8 @@ TEST(CryptoP256, EcdhConvergence) {
     auto bob = generate_keypair();
     ASSERT_TRUE(alice.has_value() && bob.has_value());
 
-    auto ss_ab = ecdh_derive(alice->private_key, bob->public_key);
-    auto ss_ba = ecdh_derive(bob->private_key, alice->public_key);
+    auto ss_ab = ecdh_derive(alice->private_key.to_vector(), bob->public_key.to_vector());
+    auto ss_ba = ecdh_derive(bob->private_key.to_vector(), alice->public_key.to_vector());
     ASSERT_TRUE(ss_ab.has_value() && ss_ba.has_value());
     EXPECT_EQ(*ss_ab, *ss_ba);
     EXPECT_EQ(ss_ab->size(), 32u);
@@ -130,11 +130,11 @@ TEST(CryptoP256, Ecies16) {
     ASSERT_TRUE(recipient.has_value());
 
     std::vector<uint8_t> plaintext(16, 0x42);
-    auto enc = ecies_encrypt(recipient->public_key, plaintext);
+    auto enc = ecies_encrypt(recipient->public_key.to_vector(), plaintext);
     ASSERT_TRUE(enc.has_value());
     EXPECT_EQ(enc->ephemeral_pubkey.size(), 65u);
 
-    auto dec = ecies_decrypt(recipient->private_key, *enc);
+    auto dec = ecies_decrypt(recipient->private_key.to_vector(), *enc);
     ASSERT_TRUE(dec.has_value());
     EXPECT_EQ(*dec, plaintext);
 }
@@ -144,10 +144,10 @@ TEST(CryptoP256, Ecies256) {
     ASSERT_TRUE(recipient.has_value());
 
     std::vector<uint8_t> plaintext(256, 0xAB);
-    auto enc = ecies_encrypt(recipient->public_key, plaintext);
+    auto enc = ecies_encrypt(recipient->public_key.to_vector(), plaintext);
     ASSERT_TRUE(enc.has_value());
 
-    auto dec = ecies_decrypt(recipient->private_key, *enc);
+    auto dec = ecies_decrypt(recipient->private_key.to_vector(), *enc);
     ASSERT_TRUE(dec.has_value());
     EXPECT_EQ(*dec, plaintext);
 }
@@ -160,10 +160,10 @@ TEST(CryptoP256, Ecies1024) {
     for (size_t i = 0; i < plaintext.size(); i++)
         plaintext[i] = static_cast<uint8_t>(i & 0xFF);
 
-    auto enc = ecies_encrypt(recipient->public_key, plaintext);
+    auto enc = ecies_encrypt(recipient->public_key.to_vector(), plaintext);
     ASSERT_TRUE(enc.has_value());
 
-    auto dec = ecies_decrypt(recipient->private_key, *enc);
+    auto dec = ecies_decrypt(recipient->private_key.to_vector(), *enc);
     ASSERT_TRUE(dec.has_value());
     EXPECT_EQ(*dec, plaintext);
 }
@@ -173,12 +173,12 @@ TEST(CryptoP256, EciesTamper) {
     ASSERT_TRUE(recipient.has_value());
 
     std::vector<uint8_t> plaintext(64, 0x77);
-    auto enc = ecies_encrypt(recipient->public_key, plaintext);
+    auto enc = ecies_encrypt(recipient->public_key.to_vector(), plaintext);
     ASSERT_TRUE(enc.has_value());
 
     auto tampered = *enc;
     tampered.encrypted_key[0] ^= 0xFF;
-    auto dec = ecies_decrypt(recipient->private_key, tampered);
+    auto dec = ecies_decrypt(recipient->private_key.to_vector(), tampered);
     EXPECT_FALSE(dec.has_value());
 }
 
@@ -215,12 +215,12 @@ TEST_P(CryptoMultiCurve, SignVerifyDigest) {
     auto digest = hash_for_curve(msg, c);
     EXPECT_EQ(digest.size(), hash_len(c));
 
-    auto sig = ecdsa_sign_digest(kp->private_key, digest, c);
+    auto sig = ecdsa_sign_digest(kp->private_key.to_vector(), digest, c);
     ASSERT_TRUE(sig.has_value()) << "sign failed for " << to_string(c);
     EXPECT_EQ(sig->r.size(), scalar_len(c));
     EXPECT_EQ(sig->s.size(), scalar_len(c));
 
-    EXPECT_TRUE(ecdsa_verify_digest(kp->public_key, digest, *sig, c))
+    EXPECT_TRUE(ecdsa_verify_digest(kp->public_key.to_vector(), digest, *sig, c))
         << "verify failed for " << to_string(c);
 }
 
@@ -231,12 +231,12 @@ TEST_P(CryptoMultiCurve, SignVerifyWrongDigestFails) {
 
     std::vector<uint8_t> msg = {0xAA, 0xBB};
     auto digest = hash_for_curve(msg, c);
-    auto sig = ecdsa_sign_digest(kp->private_key, digest, c);
+    auto sig = ecdsa_sign_digest(kp->private_key.to_vector(), digest, c);
     ASSERT_TRUE(sig.has_value());
 
     std::vector<uint8_t> wrong_msg = {0xCC, 0xDD};
     auto wrong_digest = hash_for_curve(wrong_msg, c);
-    EXPECT_FALSE(ecdsa_verify_digest(kp->public_key, wrong_digest, *sig, c));
+    EXPECT_FALSE(ecdsa_verify_digest(kp->public_key.to_vector(), wrong_digest, *sig, c));
 }
 
 TEST_P(CryptoMultiCurve, EcdhConvergence) {
@@ -245,8 +245,8 @@ TEST_P(CryptoMultiCurve, EcdhConvergence) {
     auto bob = generate_keypair(c);
     ASSERT_TRUE(alice.has_value() && bob.has_value());
 
-    auto ss_ab = ecdh_derive(alice->private_key, bob->public_key, c);
-    auto ss_ba = ecdh_derive(bob->private_key, alice->public_key, c);
+    auto ss_ab = ecdh_derive(alice->private_key.to_vector(), bob->public_key.to_vector(), c);
+    auto ss_ba = ecdh_derive(bob->private_key.to_vector(), alice->public_key.to_vector(), c);
     ASSERT_TRUE(ss_ab.has_value() && ss_ba.has_value());
     EXPECT_EQ(*ss_ab, *ss_ba);
     EXPECT_EQ(ss_ab->size(), scalar_len(c));
@@ -258,11 +258,11 @@ TEST_P(CryptoMultiCurve, EciesRoundTrip) {
     ASSERT_TRUE(recipient.has_value());
 
     std::vector<uint8_t> plaintext(64, 0x42);
-    auto enc = ecies_encrypt(recipient->public_key, plaintext, {}, c);
+    auto enc = ecies_encrypt(recipient->public_key.to_vector(), plaintext, {}, c);
     ASSERT_TRUE(enc.has_value()) << "ECIES encrypt failed for " << to_string(c);
     EXPECT_EQ(enc->ephemeral_pubkey.size(), pubkey_len(c));
 
-    auto dec = ecies_decrypt(recipient->private_key, *enc, {}, c);
+    auto dec = ecies_decrypt(recipient->private_key.to_vector(), *enc, {}, c);
     ASSERT_TRUE(dec.has_value()) << "ECIES decrypt failed for " << to_string(c);
     EXPECT_EQ(*dec, plaintext);
 }
@@ -273,12 +273,12 @@ TEST_P(CryptoMultiCurve, EciesTamperFails) {
     ASSERT_TRUE(recipient.has_value());
 
     std::vector<uint8_t> plaintext(32, 0x77);
-    auto enc = ecies_encrypt(recipient->public_key, plaintext, {}, c);
+    auto enc = ecies_encrypt(recipient->public_key.to_vector(), plaintext, {}, c);
     ASSERT_TRUE(enc.has_value());
 
     auto tampered = *enc;
     tampered.encrypted_key[0] ^= 0xFF;
-    auto dec = ecies_decrypt(recipient->private_key, tampered, {}, c);
+    auto dec = ecies_decrypt(recipient->private_key.to_vector(), tampered, {}, c);
     EXPECT_FALSE(dec.has_value());
 }
 

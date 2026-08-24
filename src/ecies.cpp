@@ -137,7 +137,7 @@ std::optional<EciesEncryptResult> ecies_encrypt(const std::vector<uint8_t>& reci
     auto eph = generate_keypair(curve);
     if (!eph) return std::nullopt;
 
-    auto ss = ecdh_derive(eph->private_key, recipient_public_key, curve);
+    auto ss = ecdh_derive(eph->private_key.to_vector(), recipient_public_key, curve);
     if (!ss) return std::nullopt;
 
     auto kdf_out = kdf2_sha256(*ss, p1, kAesKeyLen + kP256ScalarLen);
@@ -164,8 +164,12 @@ std::optional<EciesEncryptResult> ecies_encrypt(const std::vector<uint8_t>& reci
     auto ccm = aes_128_ccm_encrypt(k_aes, nonce, plaintext);
     if (!ccm) return std::nullopt;
 
-    return EciesEncryptResult{eph->public_key,  std::move(c_encrypted),     std::move(tag_kdf),
-                              std::move(nonce), std::move(ccm->ciphertext), std::move(ccm->tag),
+    return EciesEncryptResult{eph->public_key.to_vector(),
+                              std::move(c_encrypted),
+                              std::move(tag_kdf),
+                              std::move(nonce),
+                              std::move(ccm->ciphertext),
+                              std::move(ccm->tag),
                               std::move(k_aes)};
 }
 

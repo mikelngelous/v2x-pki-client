@@ -2,6 +2,7 @@
 
 #include "v2xpki/plaintext_file_key_store.hpp"
 #include "v2xpki/sizes.hpp"
+#include "v2xpki/static_bytes.hpp"
 #include "v2xpki/crypto_ec.hpp"
 
 #include <openssl/bn.h>
@@ -111,7 +112,10 @@ std::optional<KeyPair> extract_keypair(EVP_PKEY *pkey) {
         return std::nullopt;
     pub_bytes.resize(pub_len);
 
-    return KeyPair{std::move(pub_bytes), std::move(priv_bytes)};
+    auto pub_sb = StaticBytes<kP384PublicKeyLen>::from(pub_bytes);
+    auto priv_sb = StaticBytes<kP384ScalarLen>::from(priv_bytes);
+    if (!pub_sb || !priv_sb) return std::nullopt;
+    return KeyPair{*pub_sb, *priv_sb};
 }
 
 }
@@ -122,7 +126,7 @@ PlaintextFileKeyStore::PlaintextFileKeyStore(std::filesystem::path keystore_dir)
 }
 
 std::filesystem::path PlaintextFileKeyStore::pem_path(const KeyHandle &handle) const {
-    return dir_ / (handle.id + ".pem");
+    return dir_ / (handle.id_str() + ".pem");
 }
 
 std::optional<KeyPair> PlaintextFileKeyStore::load_keypair(const KeyHandle &handle) {
@@ -154,7 +158,7 @@ std::optional<Signature> PlaintextFileKeyStore::sign(const KeyHandle &handle,
     auto kp = load_keypair(handle);
     if (!kp) return std::nullopt;
 
-    return crypto::ecdsa_sign(kp->private_key, message);
+    return crypto::ecdsa_sign(kp->private_key.to_vector(), message);
 }
 
 std::optional<std::vector<uint8_t>> PlaintextFileKeyStore::
@@ -163,7 +167,7 @@ std::optional<std::vector<uint8_t>> PlaintextFileKeyStore::
     auto kp = load_keypair(handle);
     if (!kp) return std::nullopt;
 
-    return crypto::ecdh_derive(kp->private_key, peer_public_key);
+    return crypto::ecdh_derive(kp->private_key.to_vector(), peer_public_key);
 }
 
 } // namespace v2xpki
