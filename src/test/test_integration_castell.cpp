@@ -2,6 +2,7 @@
 // Validates PkiClient E2E against real PKI infrastructure.
 
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include <chrono>
 #include "v2xpki/facade.hpp"
@@ -312,7 +313,7 @@ TEST_F(CastellTest, E2_EcRequestToCastell) {
         GTEST_SKIP() << "cannot fetch EA cert";
     }
 
-    auto tmp = fs::temp_directory_path() / "pki_integration_test";
+    auto tmp = fs::temp_directory_path() / ("pki_integration_test." + std::to_string(::getpid()));
     auto trust_dir = tmp / "certs";
     auto keys_dir = tmp / "keys";
     fs::create_directories(trust_dir);
@@ -350,12 +351,17 @@ TEST_F(CastellTest, E2_EcRequestToCastell) {
 
     auto result = client.request_enrolment_credential(handle, rec);
 
-    if (result) {
-        EXPECT_GT(result->cert_bytes.size(), 50u);
-    } else {
-        // Pass as caveat — Castell may require specific format or auth
-        SUCCEED();
-    }
+    // Enrolment is the point of this suite: a failure here is a regression, not
+    // a caveat. Swallowing it would keep the test green with the flow broken.
+    ASSERT_TRUE(result.has_value())
+        << "EC enrolment against Castell failed: " << to_string(result.error());
+    EXPECT_GT(result->cert_bytes.size(), 50u);
+
+    // The EC must be issued by the EA we addressed.
+    auto ec = cert::from_coer(result->cert_bytes);
+    EXPECT_FALSE(ec.cert_bytes.empty());
+    EXPECT_FALSE(ec.is_self_signed);
+    EXPECT_EQ(hid8_hex(ec.issuer_hash_id_8), hid8_hex(ea_hid8));
 
     fs::remove_all(tmp);
 }

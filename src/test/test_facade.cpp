@@ -1,6 +1,7 @@
 // Tests for PkiClient facade + HID8 COER verification.
 
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include <chrono>
 #include "v2xpki/facade.hpp"
@@ -28,7 +29,7 @@ protected:
 
     static void SetUpTestSuite() {
         namespace fs = std::filesystem;
-        auto tmp = fs::temp_directory_path() / "pki_facade_test";
+        auto tmp = fs::temp_directory_path() / ("pki_facade_test." + std::to_string(::getpid()));
         fs::create_directories(tmp / "certs");
         fs::create_directories(tmp / "keys");
         trust_dir_ = (tmp / "certs").string();
@@ -52,7 +53,7 @@ protected:
 
     static void TearDownTestSuite() {
         namespace fs = std::filesystem;
-        auto tmp = fs::temp_directory_path() / "pki_facade_test";
+        auto tmp = fs::temp_directory_path() / ("pki_facade_test." + std::to_string(::getpid()));
         fs::remove_all(tmp);
     }
 };

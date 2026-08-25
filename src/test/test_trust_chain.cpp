@@ -3,6 +3,7 @@
 // Chain: RCA (self-signed) → AA (signed by RCA) → AT (signed by AA).
 
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include "v2xpki/trust_chain.hpp"
 #include "v2xpki/crypto_ec.hpp"
@@ -162,7 +163,7 @@ TEST_F(TrustChainTest, LoadNonexistentDir) {
 
 TEST_F(TrustChainTest, LoadEmptyDir) {
     namespace fs = std::filesystem;
-    auto tmp = fs::temp_directory_path() / "pki_test_empty_certs";
+    auto tmp = fs::temp_directory_path() / ("pki_test_empty_certs." + std::to_string(::getpid()));
     fs::create_directories(tmp);
 
     TrustChain tc;
@@ -173,7 +174,7 @@ TEST_F(TrustChainTest, LoadEmptyDir) {
 
 TEST_F(TrustChainTest, LoadFromDirectory) {
     namespace fs = std::filesystem;
-    auto tmp = fs::temp_directory_path() / "pki_test_certs";
+    auto tmp = fs::temp_directory_path() / ("pki_test_certs." + std::to_string(::getpid()));
     fs::create_directories(tmp);
 
     auto write_cert = [&](const CertInfo& ci) {

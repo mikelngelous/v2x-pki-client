@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include "v2xpki/plaintext_file_key_store.hpp"
 #include "v2xpki/crypto_ec.hpp"
@@ -12,7 +13,8 @@ class KeyStoreTest : public ::testing::Test {
 protected:
     std::filesystem::path dir_;
     void SetUp() override {
-        dir_ = std::filesystem::temp_directory_path() / "v2xpki_keystore_test";
+        dir_ = std::filesystem::temp_directory_path() /
+               ("v2xpki_keystore_test." + std::to_string(::getpid()));
         std::filesystem::create_directories(dir_);
     }
     void TearDown() override { std::filesystem::remove_all(dir_); }

@@ -1,6 +1,7 @@
 // Tests for --canonical-id (EcRecord.its_id → InnerEcRequest.itsId).
 
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include "v2xpki/ec_request.hpp"
 #include "v2xpki/crypto_ec.hpp"
@@ -167,7 +168,8 @@ TEST_F(CanonicalIdTest, ValidationBounds) {
 
 TEST_F(CanonicalIdTest, Persistence) {
     namespace fs = std::filesystem;
-    auto tmp_dir = fs::temp_directory_path() / "test_canonical_id_ks";
+    auto tmp_dir = fs::temp_directory_path() /
+                   ("test_canonical_id_ks." + std::to_string(::getpid()));
     fs::create_directories(tmp_dir);
     auto cid_path = (tmp_dir / "canonical.id").string();
 
