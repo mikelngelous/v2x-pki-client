@@ -59,6 +59,14 @@ target_link_libraries(test_canonical_id PRIVATE v2xpki-facade GTest::gtest_main)
 target_include_directories(test_canonical_id PRIVATE ${PROJECT_SOURCE_DIR}/src)
 gtest_discover_tests(test_canonical_id TEST_PREFIX pki.)
 
+# CLI contract tests — spawn the built binary; offline (embedded cert fixture).
+add_executable(test_cli_verify_hid8 test_cli_verify_hid8.cpp)
+target_link_libraries(test_cli_verify_hid8 PRIVATE GTest::gtest_main)
+target_compile_definitions(test_cli_verify_hid8 PRIVATE
+    V2XPKI_CLI_BINARY="$<TARGET_FILE:v2x-pki-client>")
+add_dependencies(test_cli_verify_hid8 v2x-pki-client)
+gtest_discover_tests(test_cli_verify_hid8 TEST_PREFIX pki.)
+
 add_executable(test_golden_bytes test_golden_bytes.cpp)
 target_link_libraries(test_golden_bytes PRIVATE v2xpki-transport GTest::gtest_main)
 target_include_directories(test_golden_bytes PRIVATE ${PROJECT_SOURCE_DIR}/src)

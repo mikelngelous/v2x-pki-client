@@ -17,7 +17,8 @@ static const Command kCommands[] = {
     {"fetch-trust", v2xpki::cli::cmd_fetch_trust, "Download trust material (RCA, TLM, MA certs)"},
     {"lookup-cert", v2xpki::cli::cmd_lookup_cert, "Lookup cert by HashedId8"},
     {"fetch-ectl", v2xpki::cli::cmd_fetch_ectl, "Download and verify ECTL"},
-    {"verify-hid8", v2xpki::cli::cmd_verify_hid8, "Compute HashedId8 of a local cert file"},
+    {"verify-hid8", v2xpki::cli::cmd_verify_hid8,
+     "Compute HashedId8 of a local cert file (--hid8 pins expected)"},
     {"enrol", v2xpki::cli::cmd_enrol, "Request Enrolment Credential from EA"},
     {"request-at", v2xpki::cli::cmd_request_at, "Request Authorization Ticket from AA"},
 };

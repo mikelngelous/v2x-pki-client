@@ -18,6 +18,7 @@ extern "C" {
 #include "asn_application.h"
 }
 
+#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -162,11 +163,17 @@ int cmd_lookup_cert(const Args &a) {
         return 1;
     }
 
+    if (!a.out.empty() && !write_file(a.out, resp->body)) {
+        std::cerr << "error: cannot write " << a.out << "\n";
+        return 1;
+    }
+
     if (a.json) {
         print_cert_summary(summary, true);
     } else {
         std::cout << "Cert lookup " << a.hid8 << ":\n";
         print_cert_summary(summary, false);
+        if (!a.out.empty()) std::cout << "  Saved:          " << a.out << "\n";
     }
     return 0;
 }
@@ -185,16 +192,42 @@ int cmd_verify_hid8(const Args &a) {
 
     auto h = compute_hid8(data);
     auto summary = parse_cert_summary(data);
+    auto actual = hid8_hex(h);
+
+    // --hid8 pins an expected value: a mismatch must fail loudly. Without it the
+    // command only reports what it computed.
+    std::string expected;
+    bool matches = true;
+    if (!a.hid8.empty()) {
+        expected = a.hid8;
+        for (auto &c : expected)
+            c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        matches = (expected == actual);
+    }
 
     if (a.json) {
         std::cout << "{\"file\":\"" << a.cert_path << "\",\"size\":" << data.size()
-                  << ",\"hid8\":\"" << hid8_hex(h)
-                  << "\",\"valid\":" << (summary.valid ? "true" : "false") << "}" << '\n';
+                  << ",\"hid8\":\"" << actual
+                  << "\",\"valid\":" << (summary.valid ? "true" : "false");
+        if (!expected.empty())
+            std::cout << ",\"expected\":\"" << expected
+                      << "\",\"match\":" << (matches ? "true" : "false");
+        std::cout << "}" << '\n';
     } else {
         std::cout << "File:   " << a.cert_path << " (" << data.size() << "B)\n"
-                  << "HID8:   " << hid8_hex(h) << "\n"
+                  << "HID8:   " << actual << "\n"
                   << "Valid:  " << (summary.valid ? "yes" : "no") << "\n";
+        if (!expected.empty())
+            std::cout << "Expect: " << expected << "\n"
+                      << "Match:  " << (matches ? "yes" : "NO") << "\n";
         if (summary.valid) print_cert_summary(summary, false);
+    }
+
+    if (!summary.valid) return 1;
+    if (!matches) {
+        std::cerr << "error: HashedId8 mismatch: expected " << expected << ", got " << actual
+                  << "\n";
+        return 1;
     }
     return 0;
 }
@@ -478,8 +511,11 @@ int cmd_enrol(const Args &a) {
         return 1;
     }
 
-    auto ec_path = a.keystore_dir + "/ec.cert";
-    write_file(ec_path, result->cert_bytes);
+    auto ec_path = a.out.empty() ? (a.keystore_dir + "/ec.cert") : a.out;
+    if (!write_file(ec_path, result->cert_bytes)) {
+        std::cerr << "error: cannot write " << ec_path << "\n";
+        return 1;
+    }
 
     auto ec_hid8 = compute_hid8(result->cert_bytes);
     if (a.json) {
@@ -591,8 +627,11 @@ int cmd_request_at(const Args &a) {
         return 1;
     }
 
-    auto at_path = out_dir + "/at.cert";
-    write_file(at_path, result->cert_bytes);
+    auto at_path = a.out.empty() ? (out_dir + "/at.cert") : a.out;
+    if (!write_file(at_path, result->cert_bytes)) {
+        std::cerr << "error: cannot write " << at_path << "\n";
+        return 1;
+    }
 
     auto at_hid8 = compute_hid8(result->cert_bytes);
     if (a.json) {
