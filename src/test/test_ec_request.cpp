@@ -23,7 +23,8 @@ protected:
         canonical_keys_ = *canonical;
         ea_keys_ = *ea;
 
-        auto ea_cert = cert_utils::build_root_cert("ea_test", ea->public_key, ea->private_key);
+        auto ea_cert = cert_utils::build_root_cert("ea_test", ea->public_key.to_vector(),
+                                                   ea->private_key.to_vector());
         if (!ea_cert) return;
         ea_cert_ = *ea_cert;
         pool_ok_ = true;
@@ -47,7 +48,9 @@ TEST_F(EcRequestTest, ValidateOk) {
 
 TEST_F(EcRequestTest, ValidateBadKey) {
     EcRecord rec;
-    rec.canonical_public_key = {0x01, 0x02, 0x03};
+    rec.canonical_public_key = *StaticBytes<kP384PublicKeyLen>::from(std::vector<uint8_t>{0x01,
+                                                                                          0x02,
+                                                                                          0x03});
     rec.ea_hashed_id_8 = ea_cert_.hashed_id_8;
     rec.requested_psids = {36};
     rec.validity_period_days = 30;
@@ -104,7 +107,7 @@ TEST_F(EcRequestTest, EncodeProducesBytes) {
     rec.validity_period_days = 30;
 
     auto desc = assemble_ec_request(rec, std::chrono::system_clock::now());
-    auto encoded = encode_ec_request(desc, ea_cert_, canonical_keys_.private_key);
+    auto encoded = encode_ec_request(desc, ea_cert_, canonical_keys_.private_key.to_vector());
     ASSERT_TRUE(encoded.has_value());
     EXPECT_GT(encoded->encoded.size(), 100u);
     EXPECT_EQ(encoded->request_aes_key.size(), 16u);
@@ -118,7 +121,7 @@ TEST_F(EcRequestTest, EncodeDecodeRoundtrip) {
     rec.validity_period_days = 15;
 
     auto desc = assemble_ec_request(rec, std::chrono::system_clock::now());
-    auto encoded = encode_ec_request(desc, ea_cert_, canonical_keys_.private_key);
+    auto encoded = encode_ec_request(desc, ea_cert_, canonical_keys_.private_key.to_vector());
     ASSERT_TRUE(encoded.has_value());
     EXPECT_GT(encoded->encoded.size(), 0u);
 }
@@ -134,7 +137,7 @@ TEST_F(EcRequestTest, EncodeBadEa) {
     CertInfo bad_ea = ea_cert_;
     bad_ea.public_key.clear();
 
-    auto req_result = encode_ec_request(desc, bad_ea, canonical_keys_.private_key);
+    auto req_result = encode_ec_request(desc, bad_ea, canonical_keys_.private_key.to_vector());
     EXPECT_FALSE(req_result.has_value());
     EXPECT_TRUE(req_result.error() == Error::InvalidArgument ||
                 req_result.error() == Error::Crypto);
@@ -148,7 +151,7 @@ TEST_F(EcRequestTest, EciesRoundtripViaRequest) {
     rec.validity_period_days = 30;
 
     auto desc = assemble_ec_request(rec, std::chrono::system_clock::now());
-    auto encoded = encode_ec_request(desc, ea_cert_, canonical_keys_.private_key);
+    auto encoded = encode_ec_request(desc, ea_cert_, canonical_keys_.private_key.to_vector());
     ASSERT_TRUE(encoded.has_value());
     EXPECT_GT(encoded->encoded.size(), 200u);
 }

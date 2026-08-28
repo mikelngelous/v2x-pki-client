@@ -31,20 +31,22 @@ protected:
         pool_.aa_keys = *aa_kp;
         pool_.at_keys = *at_kp;
 
-        auto rca_opt = cert_utils::build_root_cert("rca_test", rca_kp->public_key,
-                                                   rca_kp->private_key);
+        auto rca_opt = cert_utils::build_root_cert("rca_test", rca_kp->public_key.to_vector(),
+                                                   rca_kp->private_key.to_vector());
         if (!rca_opt) return;
         pool_.rca_cert = *rca_opt;
 
-        auto aa_opt = cert_utils::build_signed_cert("aa_test", aa_kp->public_key,
-                                                    rca_kp->private_key, pool_.rca_cert.hashed_id_8,
-                                                    true, false, pool_.rca_cert.cert_bytes);
+        auto aa_opt = cert_utils::build_signed_cert("aa_test", aa_kp->public_key.to_vector(),
+                                                    rca_kp->private_key.to_vector(),
+                                                    pool_.rca_cert.hashed_id_8, true, false,
+                                                    pool_.rca_cert.cert_bytes.to_vector());
         if (!aa_opt) return;
         pool_.aa_cert = *aa_opt;
 
-        auto at_opt = cert_utils::build_signed_cert("at_test", at_kp->public_key,
-                                                    aa_kp->private_key, pool_.aa_cert.hashed_id_8,
-                                                    false, false, pool_.aa_cert.cert_bytes);
+        auto at_opt = cert_utils::build_signed_cert("at_test", at_kp->public_key.to_vector(),
+                                                    aa_kp->private_key.to_vector(),
+                                                    pool_.aa_cert.hashed_id_8, false, false,
+                                                    pool_.aa_cert.cert_bytes.to_vector());
         if (!at_opt) return;
         pool_.at_cert = *at_opt;
 
@@ -149,9 +151,10 @@ TEST_F(TrustChainTest, Hid8Uniqueness) {
 
 TEST_F(TrustChainTest, BuildCertInvalidKey) {
     std::vector<uint8_t> bad_key = {0x04, 0x01, 0x02};
-    auto result = cert_utils::build_signed_cert("bad_key_cert", bad_key, pool_.rca_keys.private_key,
+    auto result = cert_utils::build_signed_cert("bad_key_cert", bad_key,
+                                                pool_.rca_keys.private_key.to_vector(),
                                                 pool_.rca_cert.hashed_id_8, false, false,
-                                                pool_.rca_cert.cert_bytes);
+                                                pool_.rca_cert.cert_bytes.to_vector());
     EXPECT_FALSE(result.has_value());
 }
 
@@ -206,12 +209,13 @@ TEST_F(TrustChainTest, TwoIndependentChains) {
     auto at2_kp = crypto::generate_keypair();
     ASSERT_TRUE(rca2_kp.has_value() && at2_kp.has_value());
 
-    auto rca2 = cert_utils::build_root_cert("rca_second", rca2_kp->public_key,
-                                            rca2_kp->private_key);
+    auto rca2 = cert_utils::build_root_cert("rca_second", rca2_kp->public_key.to_vector(),
+                                            rca2_kp->private_key.to_vector());
     ASSERT_TRUE(rca2.has_value());
 
-    auto at2 = cert_utils::build_signed_cert("at_second", at2_kp->public_key, rca2_kp->private_key,
-                                             rca2->hashed_id_8, false, false, rca2->cert_bytes);
+    auto at2 = cert_utils::build_signed_cert("at_second", at2_kp->public_key.to_vector(),
+                                             rca2_kp->private_key.to_vector(), rca2->hashed_id_8,
+                                             false, false, rca2->cert_bytes.to_vector());
     ASSERT_TRUE(at2.has_value());
 
     TrustChain tc;

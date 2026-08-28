@@ -6,6 +6,7 @@
 #include "curve_point.hpp"
 #include "v2xpki/crypto_ec.hpp"
 #include "v2xpki/sizes.hpp"
+#include "v2xpki/static_bytes.hpp"
 
 #include <algorithm>
 
@@ -29,7 +30,8 @@ std::array<uint8_t, 8> compute_hid8(const std::vector<uint8_t> &cert_coer) {
 
 CertInfo from_struct(const struct CertificateBase *cert, const std::vector<uint8_t> &cert_coer) {
     CertInfo ci;
-    ci.cert_bytes = cert_coer;
+    // Empty on overflow reuses the "decode failed" signal callers already check.
+    if (auto cb = StaticBytes<kMaxCoerMessageLen>::from(cert_coer)) ci.cert_bytes = *cb;
     ci.hashed_id_8 = compute_hid8(cert_coer);
 
     // Issuer
@@ -59,19 +61,27 @@ CertInfo from_struct(const struct CertificateBase *cert, const std::vector<uint8
             auto *pvk = vki->choice.verificationKey;
             if (pvk->present == PublicVerificationKey_PR_ecdsaNistP256 &&
                 pvk->choice.ecdsaNistP256) {
-                ci.public_key = point::to_sec1(pvk->choice.ecdsaNistP256);
+                if (auto pk = StaticBytes<
+                        kP384PublicKeyLen>::from(point::to_sec1(pvk->choice.ecdsaNistP256)))
+                    ci.public_key = *pk;
                 ci.curve = Curve::NistP256;
             } else if (pvk->present == PublicVerificationKey_PR_ecdsaBrainpoolP256r1 &&
                        pvk->choice.ecdsaBrainpoolP256r1) {
-                ci.public_key = point::to_sec1(pvk->choice.ecdsaBrainpoolP256r1);
+                if (auto pk = StaticBytes<
+                        kP384PublicKeyLen>::from(point::to_sec1(pvk->choice.ecdsaBrainpoolP256r1)))
+                    ci.public_key = *pk;
                 ci.curve = Curve::BrainpoolP256r1;
             } else if (pvk->present == PublicVerificationKey_PR_ecdsaBrainpoolP384r1 &&
                        pvk->choice.ecdsaBrainpoolP384r1) {
-                ci.public_key = point::to_sec1_384(pvk->choice.ecdsaBrainpoolP384r1);
+                if (auto pk = StaticBytes<kP384PublicKeyLen>::
+                        from(point::to_sec1_384(pvk->choice.ecdsaBrainpoolP384r1)))
+                    ci.public_key = *pk;
                 ci.curve = Curve::BrainpoolP384r1;
             } else if (pvk->present == PublicVerificationKey_PR_ecdsaNistP384 &&
                        pvk->choice.ecdsaNistP384) {
-                ci.public_key = point::to_sec1_384(pvk->choice.ecdsaNistP384);
+                if (auto pk = StaticBytes<
+                        kP384PublicKeyLen>::from(point::to_sec1_384(pvk->choice.ecdsaNistP384)))
+                    ci.public_key = *pk;
                 ci.curve = Curve::NistP384;
             }
         }
@@ -83,26 +93,35 @@ CertInfo from_struct(const struct CertificateBase *cert, const std::vector<uint8
         auto *bpek = cert->toBeSigned->encryptionKey->publicKey;
         if (bpek->present == BasePublicEncryptionKey_PR_eciesNistP256 &&
             bpek->choice.eciesNistP256) {
-            ci.encryption_key = point::to_sec1(bpek->choice.eciesNistP256);
+            if (auto ek = StaticBytes<kP256PublicKeyLen>::from(point::to_sec1(bpek->choice
+                                                                                  .eciesNistP256)))
+                ci.encryption_key = *ek;
             ci.enc_curve = Curve::NistP256;
         } else if (bpek->present == BasePublicEncryptionKey_PR_eciesBrainpoolP256r1 &&
                    bpek->choice.eciesBrainpoolP256r1) {
-            ci.encryption_key = point::to_sec1(bpek->choice.eciesBrainpoolP256r1);
+            if (auto ek = StaticBytes<
+                    kP256PublicKeyLen>::from(point::to_sec1(bpek->choice.eciesBrainpoolP256r1)))
+                ci.encryption_key = *ek;
             ci.enc_curve = Curve::BrainpoolP256r1;
         }
     }
 
     // TBS bytes (for signature verification)
     if (cert->toBeSigned) {
-        ci.tbs_bytes = coer::encode(&asn_DEF_ToBeSignedCertificate, cert->toBeSigned);
+        if (auto tb = StaticBytes<
+                kMaxCoerMessageLen>::from(coer::encode(&asn_DEF_ToBeSignedCertificate,
+                                                       cert->toBeSigned)))
+            ci.tbs_bytes = *tb;
     }
 
     // Signature (multi-curve: extract_sig detects the curve)
     if (cert->signature) {
         point::SigRS rs;
         if (point::extract_sig(cert->signature, rs)) {
-            ci.signature_r = std::move(rs.r);
-            ci.signature_s = std::move(rs.s);
+            auto r = StaticBytes<kP384ScalarLen>::from(rs.r);
+            auto s = StaticBytes<kP384ScalarLen>::from(rs.s);
+            if (r) ci.signature_r = *r;
+            if (s) ci.signature_s = *s;
         }
     }
 

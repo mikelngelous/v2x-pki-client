@@ -32,6 +32,7 @@ extern "C" {
 
 #include "internal/coer.hpp"
 #include "internal/asn_ptr.hpp"
+#include "internal/cert_parse.hpp"
 #include "internal/encrypted_data.hpp"
 #include "internal/curve_point.hpp"
 #include "internal/signed_envelope.hpp"
@@ -109,15 +110,16 @@ Result<EcRequestResult> encode_ec_request(const EcRequestDescription& desc, cons
     switch (curve) {
         case Curve::BrainpoolP256r1:
             pvk->present = PublicVerificationKey_PR_ecdsaBrainpoolP256r1;
-            pvk->choice.ecdsaBrainpoolP256r1 = point::from_sec1(desc.verification_key);
+            pvk->choice.ecdsaBrainpoolP256r1 = point::from_sec1(desc.verification_key.to_vector());
             break;
         case Curve::BrainpoolP384r1:
             pvk->present = PublicVerificationKey_PR_ecdsaBrainpoolP384r1;
-            pvk->choice.ecdsaBrainpoolP384r1 = point::from_sec1_384(desc.verification_key);
+            pvk->choice
+                .ecdsaBrainpoolP384r1 = point::from_sec1_384(desc.verification_key.to_vector());
             break;
         default:
             pvk->present = PublicVerificationKey_PR_ecdsaNistP256;
-            pvk->choice.ecdsaNistP256 = point::from_sec1(desc.verification_key);
+            pvk->choice.ecdsaNistP256 = point::from_sec1(desc.verification_key.to_vector());
             break;
     }
     pkeys->verificationKey = pvk;
@@ -166,14 +168,14 @@ Result<EcRequestResult> encode_ec_request(const EcRequestDescription& desc, cons
        to public_key). TS 102 941 §B.2: P1 = SHA-256(recipient cert COER). ECIES is always P-256
        (NIST or Brainpool), even for P-384 certs.
     */
-    const std::vector<uint8_t>& ea_enc_key = ea_cert.encryption_key.empty()
-                                                 ? ea_cert.public_key
-                                                 : ea_cert.encryption_key;
+    std::vector<uint8_t> ea_enc_key = ea_cert.encryption_key.empty()
+                                          ? ea_cert.public_key.to_vector()
+                                          : ea_cert.encryption_key.to_vector();
     if (ea_enc_key.size() < 33) return Error::InvalidArgument;
 
     // ECIES curve = the EA cert's encryption-key curve, not the requester's.
     Curve ecies_curve = ea_cert.enc_curve;
-    auto p1 = crypto::hash_sha256(ea_cert.cert_bytes);
+    auto p1 = crypto::hash_sha256(ea_cert.cert_bytes.to_vector());
     auto ecies_result = crypto::ecies_encrypt(ea_enc_key, outer_signed_bytes, p1, ecies_curve);
     if (!ecies_result) return Error::Crypto;
 
@@ -184,7 +186,11 @@ Result<EcRequestResult> encode_ec_request(const EcRequestDescription& desc, cons
     ASN_STRUCT_FREE(asn_DEF_Ieee1609Dot2Data, enc_wrapper);
 
     if (final_bytes.empty()) return Error::Encode;
-    return EcRequestResult{std::move(final_bytes), ecies_result->aes_key};
+    auto encoded = StaticBytes<kMaxCoerMessageLen>::from(final_bytes);
+    if (!encoded) return Error::Encode;
+    auto aes_key = StaticBytes<kAesKeyLen>::from(ecies_result->aes_key);
+    if (!aes_key) return Error::Crypto;
+    return EcRequestResult{*encoded, *aes_key};
 }
 
 // --- Response decoder ---
@@ -203,13 +209,15 @@ Result<EcResponse> decode_ec_response(const std::vector<uint8_t>& response_bytes
 
     EcResponse result;
     result.response_code = static_cast<EnrolmentResponseCode>(resp->responseCode);
-    result.request_hash = octet::bytes(&resp->requestHash);
+    auto request_hash = StaticBytes<16>::from(octet::bytes(&resp->requestHash));
+    if (!request_hash) return Error::Decode;
+    result.request_hash = *request_hash;
 
     if (resp->certificate) {
-        CertInfo ci;
-        ci.cert_bytes = coer::encode(&asn_DEF_CertificateBase, resp->certificate);
-        auto h = crypto::hash_sha256(ci.cert_bytes);
-        std::copy_n(h.end() - 8, 8, ci.hashed_id_8.begin());
+        auto cert_bytes = coer::encode(&asn_DEF_CertificateBase, resp->certificate);
+        // EtsiTs103097Certificate_t is just a CertificateBase_t typedef; the struct tag hides it.
+        auto ci = cert::from_struct(reinterpret_cast<const CertificateBase*>(resp->certificate),
+                                    cert_bytes);
         ci.label = "ec_response";
         result.certificate = ci;
     }

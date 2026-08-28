@@ -337,7 +337,7 @@ TEST_F(CastellTest, E2_EcRequestToCastell) {
 
     PkiClient client(cfg);
 
-    KeyHandle handle{"canonical_integration"};
+    auto handle = *KeyHandle::from("canonical_integration");
     client.key_store().store_keypair(handle, *kp);
 
     auto ea_hid8 = compute_hid8(ea_resp->body);
@@ -383,13 +383,13 @@ TEST_F(CastellTest, F2_EctlSignerHid8Pinning) {
     ASSERT_FALSE(tlm.public_key.empty());
 
     // Correct signer → should verify
-    auto topo = decode_ectl(ectl_resp->body, tlm.public_key, tlm_bytes_);
+    auto topo = decode_ectl(ectl_resp->body, tlm.public_key.to_vector(), tlm_bytes_);
     ASSERT_TRUE(topo.has_value());
     EXPECT_TRUE(topo->ectl_signature_verified);
 
     // Wrong signer cert bytes → HID8 pinning rejects
     if (!rca_bytes_.empty()) {
-        auto topo_bad = decode_ectl(ectl_resp->body, tlm.public_key, rca_bytes_);
+        auto topo_bad = decode_ectl(ectl_resp->body, tlm.public_key.to_vector(), rca_bytes_);
         ASSERT_TRUE(topo_bad.has_value());
         EXPECT_FALSE(topo_bad->ectl_signature_verified);
     }

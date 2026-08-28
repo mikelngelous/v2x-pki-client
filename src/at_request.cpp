@@ -3,8 +3,10 @@
 #include "v2xpki/at_request.hpp"
 #include "v2xpki/crypto_ec.hpp"
 #include "v2xpki/sizes.hpp"
+#include "v2xpki/static_bytes.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstring>
 #include <openssl/hmac.h>
@@ -34,6 +36,7 @@ extern "C" {
 
 #include "internal/coer.hpp"
 #include "internal/asn_ptr.hpp"
+#include "internal/cert_parse.hpp"
 #include "internal/encrypted_data.hpp"
 #include "internal/signed_envelope.hpp"
 #include "internal/curve_point.hpp"
@@ -91,10 +94,10 @@ AtRequestDescription assemble_at_request(const AtRecord& rec,
 
     auto hmac_kp = crypto::generate_keypair(); // reuse keygen for random bytes
     if (hmac_kp) {
-        desc.hmac_key.assign(hmac_kp->private_key.begin(),
-                             hmac_kp->private_key.begin() + kP256ScalarLen);
+        desc.hmac_key = *StaticBytes<32>::from(hmac_kp->private_key.data(), kP256ScalarLen);
     } else {
-        desc.hmac_key.resize(kSha256Len, 0);
+        std::array<uint8_t, kSha256Len> zeros{};
+        desc.hmac_key = *StaticBytes<32>::from(zeros.data(), zeros.size());
     }
 
     return desc;
@@ -113,15 +116,16 @@ Result<AtRequestResult> encode_at_request(const AtRequestDescription& desc, cons
     switch (curve) {
         case Curve::BrainpoolP256r1:
             pvk.present = PublicVerificationKey_PR_ecdsaBrainpoolP256r1;
-            pvk.choice.ecdsaBrainpoolP256r1 = point::from_sec1(desc.verification_key);
+            pvk.choice.ecdsaBrainpoolP256r1 = point::from_sec1(desc.verification_key.to_vector());
             break;
         case Curve::BrainpoolP384r1:
             pvk.present = PublicVerificationKey_PR_ecdsaBrainpoolP384r1;
-            pvk.choice.ecdsaBrainpoolP384r1 = point::from_sec1_384(desc.verification_key);
+            pvk.choice
+                .ecdsaBrainpoolP384r1 = point::from_sec1_384(desc.verification_key.to_vector());
             break;
         default:
             pvk.present = PublicVerificationKey_PR_ecdsaNistP256;
-            pvk.choice.ecdsaNistP256 = point::from_sec1(desc.verification_key);
+            pvk.choice.ecdsaNistP256 = point::from_sec1(desc.verification_key.to_vector());
             break;
     }
     auto pvk_oer = coer::encode(&asn_DEF_PublicVerificationKey, &pvk);
@@ -178,16 +182,16 @@ Result<AtRequestResult> encode_at_request(const AtRequestDescription& desc, cons
        (fall back to public_key for synthetic test certs without one).
        ECIES is always P-256 (NIST or Brainpool), even for P-384 certs.
     */
-    const std::vector<uint8_t>& ea_enc_key = ea_cert.encryption_key.empty()
-                                                 ? ea_cert.public_key
-                                                 : ea_cert.encryption_key;
+    std::vector<uint8_t> ea_enc_key = ea_cert.encryption_key.empty()
+                                          ? ea_cert.public_key.to_vector()
+                                          : ea_cert.encryption_key.to_vector();
     if (ea_enc_key.size() < 33) {
         ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_SharedAtRequest, &shared);
         return Error::InvalidArgument;
     }
     // ECIES curve matches the EA cert's encryption key curve, not the requester's curve.
     Curve ea_ecies_curve = ea_cert.enc_curve;
-    auto p1_ea = crypto::hash_sha256(ea_cert.cert_bytes);
+    auto p1_ea = crypto::hash_sha256(ea_cert.cert_bytes.to_vector());
     auto ecies_ea = crypto::ecies_encrypt(ea_enc_key, signed_ext_bytes, p1_ea, ea_ecies_curve);
     if (!ecies_ea) {
         ASN_STRUCT_FREE_CONTENTS_ONLY(asn_DEF_SharedAtRequest, &shared);
@@ -207,15 +211,17 @@ Result<AtRequestResult> encode_at_request(const AtRequestDescription& desc, cons
     switch (curve) {
         case Curve::BrainpoolP256r1:
             pvk_inner->present = PublicVerificationKey_PR_ecdsaBrainpoolP256r1;
-            pvk_inner->choice.ecdsaBrainpoolP256r1 = point::from_sec1(desc.verification_key);
+            pvk_inner->choice
+                .ecdsaBrainpoolP256r1 = point::from_sec1(desc.verification_key.to_vector());
             break;
         case Curve::BrainpoolP384r1:
             pvk_inner->present = PublicVerificationKey_PR_ecdsaBrainpoolP384r1;
-            pvk_inner->choice.ecdsaBrainpoolP384r1 = point::from_sec1_384(desc.verification_key);
+            pvk_inner->choice
+                .ecdsaBrainpoolP384r1 = point::from_sec1_384(desc.verification_key.to_vector());
             break;
         default:
             pvk_inner->present = PublicVerificationKey_PR_ecdsaNistP256;
-            pvk_inner->choice.ecdsaNistP256 = point::from_sec1(desc.verification_key);
+            pvk_inner->choice.ecdsaNistP256 = point::from_sec1(desc.verification_key.to_vector());
             break;
     }
     pkeys->verificationKey = pvk_inner;
@@ -260,13 +266,13 @@ Result<AtRequestResult> encode_at_request(const AtRequestDescription& desc, cons
        synthetic test certs without one).
        ECIES is always P-256 (NIST or Brainpool), even for P-384 certs.
     */
-    const std::vector<uint8_t>& aa_enc_key = aa_cert.encryption_key.empty()
-                                                 ? aa_cert.public_key
-                                                 : aa_cert.encryption_key;
+    std::vector<uint8_t> aa_enc_key = aa_cert.encryption_key.empty()
+                                          ? aa_cert.public_key.to_vector()
+                                          : aa_cert.encryption_key.to_vector();
     if (aa_enc_key.size() < 33) return Error::InvalidArgument;
     // ECIES curve matches the AA cert's encryption key curve.
     Curve aa_ecies_curve = aa_cert.enc_curve;
-    auto p1_aa = crypto::hash_sha256(aa_cert.cert_bytes);
+    auto p1_aa = crypto::hash_sha256(aa_cert.cert_bytes.to_vector());
     auto ecies_aa = crypto::ecies_encrypt(aa_enc_key, outer_signed_bytes, p1_aa, aa_ecies_curve);
     if (!ecies_aa) return Error::Crypto;
 
@@ -278,7 +284,11 @@ Result<AtRequestResult> encode_at_request(const AtRequestDescription& desc, cons
     ASN_STRUCT_FREE(asn_DEF_Ieee1609Dot2Data, enc_outer);
 
     if (final_bytes.empty()) return Error::Encode;
-    return AtRequestResult{std::move(final_bytes), std::move(aes_key)};
+    auto encoded = StaticBytes<kMaxCoerMessageLen>::from(final_bytes);
+    if (!encoded) return Error::Encode;
+    auto aes_key_sb = StaticBytes<kAesKeyLen>::from(aes_key);
+    if (!aes_key_sb) return Error::Crypto;
+    return AtRequestResult{*encoded, *aes_key_sb};
 }
 
 // --- Response decoder ---
@@ -297,13 +307,15 @@ Result<AtResponse> decode_at_response(const std::vector<uint8_t>& response_bytes
 
     AtResponse result;
     result.response_code = static_cast<AuthorizationResponseCode>(resp->responseCode);
-    result.request_hash = octet::bytes(&resp->requestHash);
+    auto request_hash = StaticBytes<16>::from(octet::bytes(&resp->requestHash));
+    if (!request_hash) return Error::Decode;
+    result.request_hash = *request_hash;
 
     if (resp->certificate) {
-        CertInfo ci;
-        ci.cert_bytes = coer::encode(&asn_DEF_CertificateBase, resp->certificate);
-        auto h = crypto::hash_sha256(ci.cert_bytes);
-        std::copy_n(h.end() - 8, 8, ci.hashed_id_8.begin());
+        auto cert_bytes = coer::encode(&asn_DEF_CertificateBase, resp->certificate);
+        // EtsiTs103097Certificate_t is just a CertificateBase_t typedef; the struct tag hides it.
+        auto ci = cert::from_struct(reinterpret_cast<const CertificateBase*>(resp->certificate),
+                                    cert_bytes);
         ci.label = "at_response";
         result.certificate = ci;
     }

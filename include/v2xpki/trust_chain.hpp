@@ -8,22 +8,23 @@
 #include <vector>
 
 #include "v2xpki/sizes.hpp"
+#include "v2xpki/static_bytes.hpp"
 
 namespace v2xpki {
 
 struct CertInfo {
-    std::vector<uint8_t> cert_bytes; // COER-encoded cert (wire format)
+    StaticBytes<kMaxCoerMessageLen> cert_bytes; // COER-encoded cert (wire format)
     std::array<uint8_t, 8> hashed_id_8; // SHA-256(cert_bytes)[-8:]
-    std::vector<uint8_t> public_key; // verification key uncompressed (65 or 97 bytes)
-    std::vector<uint8_t>
-        encryption_key; // ECIES encryption key uncompressed; empty if cert has none
+    StaticBytes<kP384PublicKeyLen> public_key; // verification key uncompressed (65 or 97 bytes)
+    StaticBytes<kP256PublicKeyLen>
+        encryption_key; // ECIES encryption key uncompressed (always P-256 family); empty if none
     Curve
         enc_curve = Curve::NistP256; // encryption key curve (eciesNistP256 vs eciesBrainpoolP256r1)
     std::array<uint8_t, 8> issuer_hash_id_8; // issuer HID8 (0 if self-signed)
     bool is_self_signed = false;
-    std::vector<uint8_t> tbs_bytes; // toBeSigned COER (for signature verification)
-    std::vector<uint8_t> signature_r; // 32 or 48 bytes
-    std::vector<uint8_t> signature_s; // 32 or 48 bytes
+    StaticBytes<kMaxCoerMessageLen> tbs_bytes; // toBeSigned COER (for signature verification)
+    StaticBytes<kP384ScalarLen> signature_r; // 32 or 48 bytes
+    StaticBytes<kP384ScalarLen> signature_s; // 32 or 48 bytes
     Curve curve = Curve::NistP256; // detected from PublicVerificationKey variant
     std::string label; // descriptive name
 };

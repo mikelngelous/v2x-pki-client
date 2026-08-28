@@ -8,6 +8,7 @@
 
 #include "v2xpki/trust_list.hpp"
 #include "v2xpki/sizes.hpp"
+#include "v2xpki/static_bytes.hpp"
 #include "v2xpki/crypto_ec.hpp"
 
 #include <algorithm>
@@ -160,9 +161,13 @@ bool verify_signed_data(const SignedCtlData &data, const std::vector<uint8_t> &v
     concat.insert(concat.end(), signer_hash.begin(), signer_hash.end());
     auto signed_data_hash = crypto::hash_for_curve(concat, data.sig_curve);
 
+    auto sig_r = StaticBytes<kP384ScalarLen>::from(data.sig_r);
+    auto sig_s = StaticBytes<kP384ScalarLen>::from(data.sig_s);
+    if (!sig_r || !sig_s) return false;
+
     v2xpki::Signature sig;
-    sig.r = data.sig_r;
-    sig.s = data.sig_s;
+    sig.r = *sig_r;
+    sig.s = *sig_s;
 
     return crypto::ecdsa_verify_digest(verifier_pubkey, signed_data_hash, sig, data.sig_curve);
 }

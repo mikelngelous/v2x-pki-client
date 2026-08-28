@@ -192,8 +192,8 @@ std::vector<uint8_t> build_external_payload(const std::vector<uint8_t> &ext_data
     hdr->generationTime = gen_time;
     tbs->headerInfo = hdr;
 
-    return finalize_signed_data(tbs, ec_private_key, ec_cert.cert_bytes, ec_cert.hashed_id_8,
-                                curve);
+    return finalize_signed_data(tbs, ec_private_key, ec_cert.cert_bytes.to_vector(),
+                                ec_cert.hashed_id_8, curve);
 }
 
 } // namespace v2xpki::sign

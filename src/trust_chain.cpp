@@ -1,6 +1,7 @@
 #include "v2xpki/trust_chain.hpp"
 #include "v2xpki/crypto_ec.hpp"
 #include "v2xpki/sizes.hpp"
+#include "v2xpki/static_bytes.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -107,12 +108,12 @@ bool TrustChain::verify_cert_signature(const CertInfo& cert, const CertInfo& iss
     if (issuer.public_key.empty()) return false;
 
     // IEEE 1609.2 §5.3.1: e = H( H(COER(toBeSigned)) || H(signerIdentifierInput) )
-    auto tbs_hash = crypto::hash_for_curve(cert.tbs_bytes, cert.curve);
+    auto tbs_hash = crypto::hash_for_curve(cert.tbs_bytes.to_vector(), cert.curve);
     std::vector<uint8_t> signer_input;
     if (cert.is_self_signed)
         signer_input = {}; // self-signed: signerIdentifierInput is empty
     else
-        signer_input = issuer.cert_bytes; // issuer cert COER bytes
+        signer_input = issuer.cert_bytes.to_vector(); // issuer cert COER bytes
     auto signer_hash = crypto::hash_for_curve(signer_input, cert.curve);
 
     std::vector<uint8_t> concat;
@@ -124,7 +125,7 @@ bool TrustChain::verify_cert_signature(const CertInfo& cert, const CertInfo& iss
     Signature sig;
     sig.r = cert.signature_r;
     sig.s = cert.signature_s;
-    return crypto::ecdsa_verify_digest(issuer.public_key, digest, sig, cert.curve);
+    return crypto::ecdsa_verify_digest(issuer.public_key.to_vector(), digest, sig, cert.curve);
 }
 
 std::vector<CertInfo> TrustChain::get_by_prefix(const std::string& prefix) const {
@@ -321,12 +322,17 @@ std::optional<CertInfo> build_signed_cert(const std::string& name,
     if (cert_bytes.empty()) return std::nullopt;
 
     // Build CertInfo
+    auto pk = StaticBytes<kP384PublicKeyLen>::from(subject_public_key);
+    auto cb = StaticBytes<kMaxCoerMessageLen>::from(cert_bytes);
+    auto tb = StaticBytes<kMaxCoerMessageLen>::from(tbs_coer);
+    if (!pk || !cb || !tb) return std::nullopt;
+
     CertInfo ci;
-    ci.cert_bytes = cert_bytes; // COER wire bytes
+    ci.cert_bytes = *cb; // COER wire bytes
     ci.hashed_id_8 = cert::compute_hid8(cert_bytes); // HID8 = SHA-256(COER) last 8
-    ci.public_key = subject_public_key;
+    ci.public_key = *pk;
     ci.is_self_signed = is_self_signed;
-    ci.tbs_bytes = tbs_coer; // TBS COER for signature verify
+    ci.tbs_bytes = *tb; // TBS COER for signature verify
     ci.signature_r = sig_opt->r;
     ci.signature_s = sig_opt->s;
     ci.label = name;

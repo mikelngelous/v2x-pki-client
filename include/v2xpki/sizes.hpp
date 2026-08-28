@@ -24,6 +24,9 @@ inline constexpr std::size_t kP384PublicKeyLen = 97; // 0x04 || X(48) || Y(48)
 inline constexpr std::size_t kP384CompressedLen = 49; // 0x02|0x03 || X(48)
 inline constexpr std::size_t kSha384Len = 48;
 
+// Whole-message COER cap — a policy choice (not spec-bound); overflow fails, never truncates.
+inline constexpr std::size_t kMaxCoerMessageLen = 2048;
+
 // --- Curve identifier (static dispatch, no virtual) ---
 enum class Curve : uint8_t {
     NistP256,

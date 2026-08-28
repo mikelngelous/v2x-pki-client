@@ -41,7 +41,8 @@ protected:
         if (!canonical || !ea) return;
         canonical_keys_ = *canonical;
         ea_keys_ = *ea;
-        auto ea_cert = cert_utils::build_root_cert("ea_test", ea->public_key, ea->private_key);
+        auto ea_cert = cert_utils::build_root_cert("ea_test", ea->public_key.to_vector(),
+                                                   ea->private_key.to_vector());
         if (!ea_cert) return;
         ea_cert_ = *ea_cert;
         pool_ok_ = true;
