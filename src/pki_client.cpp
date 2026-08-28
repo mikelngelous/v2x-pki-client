@@ -1,7 +1,6 @@
 // PkiClient facade implementation.
 
 #include "v2xpki/facade.hpp"
-#include "v2xpki/crypto_ec.hpp"
 #include "v2xpki/plaintext_file_key_store.hpp"
 #include "v2xpki/trust_list.hpp"
 #include "v2xpki/sizes.hpp"
@@ -87,14 +86,15 @@ Result<CertInfo> PkiClient::request_enrolment_credential(const KeyHandle& canoni
     if (!ea_opt) return Error::NotFound;
 
     auto desc = assemble_ec_request(rec, std::chrono::system_clock::now());
-    auto req_result = encode_ec_request(desc, *ea_opt, kp->private_key);
+    auto req_result = encode_ec_request(desc, *ea_opt, kp->private_key.to_vector());
     if (!req_result) return req_result.error();
 
-    auto resp = impl_->http.post(impl_->config.ea_url, req_result->encoded);
+    auto resp = impl_->http.post(impl_->config.ea_url, req_result->encoded.to_vector());
     if (!resp) return resp.error();
     if (resp->status_code != 200) return Error::HttpStatus;
 
-    auto ec_resp = decode_ec_response(resp->body, kp->private_key, req_result->request_aes_key);
+    auto ec_resp = decode_ec_response(resp->body, kp->private_key.to_vector(),
+                                      req_result->request_aes_key.to_vector());
     if (!ec_resp) return ec_resp.error();
     if (ec_resp->response_code != EnrolmentResponseCode::Ok) return Error::Protocol;
 
@@ -104,6 +104,7 @@ Result<CertInfo> PkiClient::request_enrolment_credential(const KeyHandle& canoni
 
 Result<CertInfo> PkiClient::request_authorization_ticket(const KeyHandle& ec_handle,
                                                          const CertInfo& ec_cert,
+                                                         const KeyHandle& at_handle,
                                                          const AtRecord& rec) {
 
     std::string err;
@@ -118,20 +119,22 @@ Result<CertInfo> PkiClient::request_authorization_ticket(const KeyHandle& ec_han
     auto ea_opt = impl_->trust.find_by_hashed_id_8(rec.ea_hashed_id_8);
     if (!ea_opt) return Error::NotFound;
 
-    auto at_kp = crypto::generate_keypair(rec.curve);
-    if (!at_kp) return Error::Crypto;
+    auto at_kp = impl_->keystore.load_keypair(at_handle);
+    if (!at_kp) return Error::KeyStore;
 
     auto desc = assemble_at_request(rec, std::chrono::system_clock::now());
     desc.verification_key = at_kp->public_key;
-    auto req_result = encode_at_request(desc, *aa_opt, *ea_opt, ec_cert, kp->private_key,
-                                        at_kp->private_key);
+    auto req_result = encode_at_request(desc, *aa_opt, *ea_opt, ec_cert,
+                                        kp->private_key.to_vector(),
+                                        at_kp->private_key.to_vector());
     if (!req_result) return req_result.error();
 
-    auto resp = impl_->http.post(impl_->config.aa_url, req_result->encoded);
+    auto resp = impl_->http.post(impl_->config.aa_url, req_result->encoded.to_vector());
     if (!resp) return resp.error();
     if (resp->status_code != 200) return Error::HttpStatus;
 
-    auto at_resp = decode_at_response(resp->body, at_kp->private_key, req_result->request_aes_key);
+    auto at_resp = decode_at_response(resp->body, at_kp->private_key.to_vector(),
+                                      req_result->request_aes_key.to_vector());
     if (!at_resp) return at_resp.error();
     if (at_resp->response_code != AuthorizationResponseCode::Ok) return Error::Protocol;
 
@@ -234,10 +237,15 @@ Result<TrustTopology> PkiClient::discover_trust() {
         return Error::HttpStatus;
     }
 
-    auto ectl_topo = decode_ectl(ectl_resp->body, tlm_cert.public_key, tlm_cert.cert_bytes);
+    auto ectl_topo = decode_ectl(ectl_resp->body, tlm_cert.public_key.to_vector(),
+                                 tlm_cert.cert_bytes.to_vector());
     if (!ectl_topo) {
         std::cerr << "[discover] ECTL decode failed\n";
         return ectl_topo.error();
+    }
+    if (!ectl_topo->ectl_signature_verified) {
+        std::cerr << "[discover] ECTL signature verification failed — refusing to trust it\n";
+        return Error::SignatureInvalid;
     }
 
     TrustTopology result = *ectl_topo;
@@ -260,9 +268,17 @@ Result<TrustTopology> PkiClient::discover_trust() {
             continue;
         }
 
-        auto ctl_topo = decode_rca_ctl(ctl_resp->body, rca.public_key, rca.cert_bytes);
+        auto ctl_topo = decode_rca_ctl(ctl_resp->body, rca.public_key.to_vector(),
+                                       rca.cert_bytes.to_vector());
         if (!ctl_topo) {
             std::cerr << "[discover] CTL decode failed for RCA " << rca_hid8_hex << "\n";
+            result.ctl_signature_verified = false;
+            continue;
+        }
+        if (!ctl_topo->ctl_signature_verified) {
+            std::cerr << "[discover] CTL signature verification failed for RCA " << rca_hid8_hex
+                      << " — skipping its EA/AA/DC\n";
+            result.ctl_signature_verified = false;
             continue;
         }
 
@@ -276,8 +292,11 @@ Result<TrustTopology> PkiClient::discover_trust() {
         }
         for (const auto& dc : ctl_topo->dcs)
             result.dcs.push_back(dc);
+    }
 
-        result.ctl_signature_verified &= ctl_topo->ctl_signature_verified;
+    if (!result.ctl_signature_verified) {
+        std::cerr << "[discover] one or more RCA CTLs failed signature verification\n";
+        return Error::SignatureInvalid;
     }
 
     if (!result.eas.empty()) {

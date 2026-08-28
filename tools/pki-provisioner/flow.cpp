@@ -90,13 +90,13 @@ std::optional<TrustAnchors> discover(const std::string& base_url, const std::str
 }
 
 bool write_anchors(const TrustAnchors& ta, const std::string& output_dir) {
-    if (!atomic_write(output_dir + "/AA.coer", ta.aa.cert_bytes)) {
+    if (!atomic_write(output_dir + "/AA.coer", ta.aa.cert_bytes.to_vector())) {
         fprintf(stderr, "[pki-provisioner] FATAL: cannot write AA.coer\n");
         return false;
     }
     printf("[pki-provisioner] Wrote AA.coer (%zuB)\n", ta.aa.cert_bytes.size());
 
-    if (!atomic_write(output_dir + "/RCA.coer", ta.rca.cert_bytes)) {
+    if (!atomic_write(output_dir + "/RCA.coer", ta.rca.cert_bytes.to_vector())) {
         fprintf(stderr, "[pki-provisioner] FATAL: cannot write RCA.coer\n");
         return false;
     }
@@ -119,14 +119,14 @@ std::optional<EnrolledEc> enrol_ec(HttpClient& http, const TrustAnchors& ta,
     rec.validity_period_days = validity_days;
 
     auto desc = assemble_ec_request(rec, std::chrono::system_clock::now());
-    auto req = encode_ec_request(desc, ta.ea, canonical_kp->private_key);
+    auto req = encode_ec_request(desc, ta.ea, canonical_kp->private_key.to_vector());
     if (!req) {
         fprintf(stderr, "[pki-provisioner] FATAL: encode_ec_request: %s\n", to_string(req.error()));
         return std::nullopt;
     }
     printf("[pki-provisioner] EC request: %zuB\n", req->encoded.size());
 
-    auto http_resp = http.post(ta.ec_url, req->encoded);
+    auto http_resp = http.post(ta.ec_url, req->encoded.to_vector());
     if (!http_resp) {
         fprintf(stderr, "[pki-provisioner] FATAL: POST EC: %s\n", to_string(http_resp.error()));
         return std::nullopt;
@@ -139,8 +139,8 @@ std::optional<EnrolledEc> enrol_ec(HttpClient& http, const TrustAnchors& ta,
         return std::nullopt;
     }
 
-    auto resp = decode_ec_response(http_resp->body, canonical_kp->private_key,
-                                   req->request_aes_key);
+    auto resp = decode_ec_response(http_resp->body, canonical_kp->private_key.to_vector(),
+                                   req->request_aes_key.to_vector());
     if (!resp) {
         fprintf(stderr, "[pki-provisioner] FATAL: EC response decode failed: %s\n",
                 to_string(resp.error()));
@@ -153,9 +153,7 @@ std::optional<EnrolledEc> enrol_ec(HttpClient& http, const TrustAnchors& ta,
     }
 
     EnrolledEc ec;
-    ec.cert.cert_bytes = resp->certificate->cert_bytes;
-    ec.cert.hashed_id_8 = hid8_of(ec.cert.cert_bytes);
-    ec.cert.public_key = canonical_kp->public_key;
+    ec.cert = *resp->certificate;
     ec.canonical_kp = *canonical_kp;
 
     printf("[pki-provisioner] EC enrolled OK! cert: %zuB  HID8: %s\n", ec.cert.cert_bytes.size(),
@@ -168,7 +166,7 @@ std::optional<std::array<uint8_t, 8>> rotate_at(HttpClient& http, const TrustAnc
                                                 const std::vector<int64_t>& psids,
                                                 int64_t validity_hours,
                                                 const std::string& output_dir) {
-    auto at_kp = crypto::generate_keypair();
+    auto at_kp = crypto::generate_keypair(ec.cert.curve);
     if (!at_kp) {
         fprintf(stderr, "[pki-provisioner] ERROR: AT keygen failed\n");
         return std::nullopt;
@@ -180,17 +178,20 @@ std::optional<std::array<uint8_t, 8>> rotate_at(HttpClient& http, const TrustAnc
     rec.ea_hashed_id_8 = ta.ea.hashed_id_8;
     rec.requested_psids = psids;
     rec.validity_period_hours = validity_hours;
+    // ecSignature is signed with the EC cert's curve
+    rec.curve = ec.cert.curve;
 
     auto desc = assemble_at_request(rec, std::chrono::system_clock::now());
-    auto req = encode_at_request(desc, ta.aa, ta.ea, ec.cert, ec.canonical_kp.private_key,
-                                 at_kp->private_key);
+    auto req = encode_at_request(desc, ta.aa, ta.ea, ec.cert,
+                                 ec.canonical_kp.private_key.to_vector(),
+                                 at_kp->private_key.to_vector());
     if (!req) {
         fprintf(stderr, "[pki-provisioner] ERROR: encode_at_request: %s\n", to_string(req.error()));
         return std::nullopt;
     }
     printf("[pki-provisioner] AT request: %zuB\n", req->encoded.size());
 
-    auto http_resp = http.post(ta.at_url, req->encoded);
+    auto http_resp = http.post(ta.at_url, req->encoded.to_vector());
     if (!http_resp) {
         fprintf(stderr, "[pki-provisioner] ERROR: POST AT: %s\n", to_string(http_resp.error()));
         return std::nullopt;
@@ -203,7 +204,8 @@ std::optional<std::array<uint8_t, 8>> rotate_at(HttpClient& http, const TrustAnc
         return std::nullopt;
     }
 
-    auto resp = decode_at_response(http_resp->body, at_kp->private_key, req->request_aes_key);
+    auto resp = decode_at_response(http_resp->body, at_kp->private_key.to_vector(),
+                                   req->request_aes_key.to_vector());
     if (!resp) {
         fprintf(stderr, "[pki-provisioner] ERROR: decode_at_response: %s\n",
                 to_string(resp.error()));
@@ -219,13 +221,13 @@ std::optional<std::array<uint8_t, 8>> rotate_at(HttpClient& http, const TrustAnc
         return std::nullopt;
     }
 
-    auto hid8 = hid8_of(resp->certificate->cert_bytes);
+    auto hid8 = hid8_of(resp->certificate->cert_bytes.to_vector());
 
-    if (!atomic_write(output_dir + "/AT.coer", resp->certificate->cert_bytes)) {
+    if (!atomic_write(output_dir + "/AT.coer", resp->certificate->cert_bytes.to_vector())) {
         fprintf(stderr, "[pki-provisioner] ERROR: cannot write AT.coer\n");
         return std::nullopt;
     }
-    if (!atomic_write_key_pem(output_dir + "/AT.key", at_kp->private_key)) {
+    if (!atomic_write_key_pem(output_dir + "/AT.key", at_kp->private_key.to_vector())) {
         fprintf(stderr, "[pki-provisioner] ERROR: cannot write AT.key\n");
         return std::nullopt;
     }

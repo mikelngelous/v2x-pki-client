@@ -38,7 +38,8 @@ protected:
         if (!rca) return;
         rca_keys_ = *rca;
 
-        auto rca_cert = cert_utils::build_root_cert("rca_test", rca->public_key, rca->private_key);
+        auto rca_cert = cert_utils::build_root_cert("rca_test", rca->public_key.to_vector(),
+                                                    rca->private_key.to_vector());
         if (!rca_cert) return;
         rca_cert_ = *rca_cert;
 
@@ -130,7 +131,7 @@ TEST_F(FacadeTest, EcRequestNoEa) {
 
     auto canonical = crypto::generate_keypair();
     ASSERT_TRUE(canonical.has_value());
-    KeyHandle handle{"canonical_test"};
+    auto handle = *KeyHandle::from("canonical_test");
     client.key_store().store_keypair(handle, *canonical);
 
     EcRecord rec;
@@ -156,7 +157,7 @@ TEST_F(FacadeTest, AtRequestNoAa) {
 
     auto ec = crypto::generate_keypair();
     ASSERT_TRUE(ec.has_value());
-    KeyHandle handle{"ec_test"};
+    auto handle = *KeyHandle::from("ec_test");
     client.key_store().store_keypair(handle, *ec);
 
     AtRecord rec;
@@ -168,7 +169,8 @@ TEST_F(FacadeTest, AtRequestNoAa) {
 
     CertInfo dummy_ec;
     dummy_ec.public_key = ec->public_key;
-    auto result = client.request_authorization_ticket(handle, dummy_ec, rec);
+    auto at_handle = *KeyHandle::from("at_test");
+    auto result = client.request_authorization_ticket(handle, dummy_ec, at_handle, rec);
     EXPECT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), Error::NotFound);
 }
@@ -190,7 +192,8 @@ TEST_F(FacadeTest, Hid8CoerVsUper) {
     auto kp = crypto::generate_keypair();
     ASSERT_TRUE(kp.has_value());
 
-    auto cert = cert_utils::build_root_cert("hid8_test", kp->public_key, kp->private_key);
+    auto cert = cert_utils::build_root_cert("hid8_test", kp->public_key.to_vector(),
+                                            kp->private_key.to_vector());
     ASSERT_TRUE(cert.has_value());
 
     auto coer_bytes = cert->cert_bytes;
@@ -228,7 +231,8 @@ TEST_F(FacadeTest, Hid8CoerConsistency) {
     auto kp = crypto::generate_keypair();
     ASSERT_TRUE(kp.has_value());
 
-    auto cert = cert_utils::build_root_cert("consistency_test", kp->public_key, kp->private_key);
+    auto cert = cert_utils::build_root_cert("consistency_test", kp->public_key.to_vector(),
+                                            kp->private_key.to_vector());
     ASSERT_TRUE(cert.has_value());
 
     auto original_hid8 = cert->hashed_id_8;

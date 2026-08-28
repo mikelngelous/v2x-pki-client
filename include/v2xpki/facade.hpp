@@ -46,8 +46,10 @@ public:
 
     // Request Authorization Ticket (AT) from AA.
     // ec_cert must be the real EC cert (with cert_bytes and hashed_id_8).
+    // at_handle must already hold a keypair (caller stores it first, matching rec.curve).
     Result<CertInfo> request_authorization_ticket(const KeyHandle& ec_handle,
-                                                  const CertInfo& ec_cert, const AtRecord& rec);
+                                                  const CertInfo& ec_cert,
+                                                  const KeyHandle& at_handle, const AtRecord& rec);
 
     // --- Discovery ---
 

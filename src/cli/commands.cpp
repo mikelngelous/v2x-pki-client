@@ -430,7 +430,12 @@ int cmd_enrol(const Args &a) {
 
     Curve curve = parse_curve(a.curve_str);
     std::string key_id = a.canonical_key.empty() ? "canonical" : a.canonical_key;
-    KeyHandle handle{key_id};
+    auto handle_opt = KeyHandle::from(key_id);
+    if (!handle_opt) {
+        std::cerr << "error: --canonical-key must be 1-64 chars of [A-Za-z0-9_-]\n";
+        return 1;
+    }
+    auto &handle = *handle_opt;
     auto existing = client.key_store().load_keypair(handle);
     KeyPair kp;
     if (existing) {
@@ -481,9 +486,9 @@ int cmd_enrol(const Args &a) {
     }
 
     auto ec_path = a.keystore_dir + "/ec.cert";
-    write_file(ec_path, result->cert_bytes);
+    write_file(ec_path, result->cert_bytes.to_vector());
 
-    auto ec_hid8 = compute_hid8(result->cert_bytes);
+    auto ec_hid8 = compute_hid8(result->cert_bytes.to_vector());
     if (a.json) {
         std::cout << "{\"status\":\"ok\",\"ec_cert\":\"" << ec_path << "\",\"hid8\":\""
                   << hid8_hex(ec_hid8) << "\"}" << '\n';
@@ -556,15 +561,26 @@ int cmd_request_at(const Args &a) {
 
     PkiClient client(cfg);
 
-    KeyHandle handle{ec_key_id};
+    auto handle_opt = KeyHandle::from(ec_key_id);
+    if (!handle_opt) {
+        std::cerr << "error: --canonical-key must be 1-64 chars of [A-Za-z0-9_-]\n";
+        return 1;
+    }
+    auto &handle = *handle_opt;
     auto kp = client.key_store().load_keypair(handle);
     if (!kp) {
         std::cerr << "error: cannot load EC key '" << ec_key_id << "'\n";
         return 1;
     }
 
+    auto ec_cert_sb = StaticBytes<kMaxCoerMessageLen>::from(ec_cert_bytes);
+    if (!ec_cert_sb) {
+        std::cerr << "error: EC cert too large (" << ec_cert_bytes.size() << "B)\n";
+        return 1;
+    }
+
     CertInfo ec_ci;
-    ec_ci.cert_bytes = ec_cert_bytes;
+    ec_ci.cert_bytes = *ec_cert_sb;
     // ecSignature is signed with the EC cert's curve
     ec_ci.curve = cert::from_coer(ec_cert_bytes).curve;
     auto ec_h = compute_hid8(ec_cert_bytes);
@@ -576,14 +592,32 @@ int cmd_request_at(const Args &a) {
                   << ", HID8 " << hid8_hex(ec_h) << ")\n";
 
     auto aa_hid8 = compute_hid8(aa_resp->body);
-    auto ea_hid8_val = ea_resp ? compute_hid8(ea_resp->body) : std::array<uint8_t, 8>{};
+    if (!ea_resp || ea_resp->status_code != 200) {
+        std::cerr << "error: failed to fetch EA cert (HTTP " << (ea_resp ? ea_resp->status_code : 0)
+                  << ")\n";
+        return 1;
+    }
+    auto ea_hid8_val = compute_hid8(ea_resp->body);
 
     Curve curve = ec_ci.curve;
     if (!a.curve_str.empty() && parse_curve(a.curve_str) != curve)
         std::cerr << "warning: --curve overridden by EC cert curve (" << to_string(curve) << ")\n";
 
+    auto at_kp = crypto::generate_keypair(curve);
+    if (!at_kp) {
+        std::cerr << "error: AT keygen failed\n";
+        return 1;
+    }
+    auto at_handle_opt = KeyHandle::from(ec_key_id + "-at");
+    if (!at_handle_opt) {
+        std::cerr << "error: --canonical-key too long to derive an AT key handle\n";
+        return 1;
+    }
+    auto &at_handle = *at_handle_opt;
+    client.key_store().store_keypair(at_handle, *at_kp);
+
     AtRecord rec;
-    rec.at_public_key = kp->public_key;
+    rec.at_public_key = at_kp->public_key;
     rec.aa_hashed_id_8 = aa_hid8;
     rec.ea_hashed_id_8 = ea_hid8_val;
     rec.requested_psids = {36};
@@ -591,16 +625,16 @@ int cmd_request_at(const Args &a) {
     rec.curve = curve;
 
     if (!a.json) std::cout << "Sending AT request to " << aa_url << "...\n";
-    auto result = client.request_authorization_ticket(handle, ec_ci, rec);
+    auto result = client.request_authorization_ticket(handle, ec_ci, at_handle, rec);
     if (!result) {
         std::cerr << "error: AT request failed: " << to_string(result.error()) << "\n";
         return 1;
     }
 
     auto at_path = out_dir + "/at.cert";
-    write_file(at_path, result->cert_bytes);
+    write_file(at_path, result->cert_bytes.to_vector());
 
-    auto at_hid8 = compute_hid8(result->cert_bytes);
+    auto at_hid8 = compute_hid8(result->cert_bytes.to_vector());
     if (a.json) {
         std::cout << "{\"status\":\"ok\",\"at_cert\":\"" << at_path << "\",\"hid8\":\""
                   << hid8_hex(at_hid8) << "\"}" << '\n';
