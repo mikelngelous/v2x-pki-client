@@ -35,6 +35,7 @@ add_library(v2xpki-transport STATIC
     internal/coer.cpp
     internal/curve_point.cpp
     internal/cert_parse.cpp
+    internal/signed_message.cpp
     internal/encrypted_data.cpp
     internal/signed_envelope.cpp
     http_client.cpp
