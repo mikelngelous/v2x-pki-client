@@ -40,9 +40,9 @@ extern "C" {
 using namespace v2xpki;
 
 static const char *CASTELL_URL = "https://pki.skyv2x.com";
-static const char *RCA_HID8_HEX = "AD7B90E1EB12A0F9";
-static const char *TLM_HID8_HEX = "74534B8C394779F4";
-static const char *MA_HID8_HEX = "405D3CF914EB9E05";
+static const char *RCA_HID8_HEX = "FA8B241AD2E9DBE7";
+static const char *TLM_HID8_HEX = "0A065E9D1B8D241A";
+static const char *MA_HID8_HEX = "1051D873785C203B";
 
 static std::string bytes_to_hex_upper(const uint8_t *data, size_t len) {
     std::ostringstream oss;
@@ -104,7 +104,7 @@ TEST_F(CastellTest, A1_Healthz) {
     EXPECT_EQ(resp->status_code, 200);
     auto body = body_to_string(resp->body);
     EXPECT_NE(body.find("\"status\":\"ok\""), std::string::npos);
-    EXPECT_NE(body.find("\"rca_hashedId8\":\"AD7B90E1EB12A0F9\""), std::string::npos);
+    EXPECT_NE(body.find("\"rca_hashedId8\":\"FA8B241AD2E9DBE7\""), std::string::npos);
 }
 
 TEST_F(CastellTest, A2_Version) {
