@@ -37,6 +37,7 @@ extern "C" {
 #include "internal/coer.hpp"
 #include "internal/asn_ptr.hpp"
 #include "internal/cert_parse.hpp"
+#include "internal/request_hash.hpp"
 #include "internal/encrypted_data.hpp"
 #include "internal/signed_envelope.hpp"
 #include "internal/curve_point.hpp"
@@ -295,7 +296,8 @@ Result<AtRequestResult> encode_at_request(const AtRequestDescription& desc, cons
 
 Result<AtResponse> decode_at_response(const std::vector<uint8_t>& response_bytes,
                                       const std::vector<uint8_t>& recipient_private_key,
-                                      const std::vector<uint8_t>& request_aes_key) {
+                                      const std::vector<uint8_t>& request_aes_key,
+                                      const std::vector<uint8_t>& request_bytes) {
 
     auto inner_bytes = enc::decrypt_and_unwrap(response_bytes, recipient_private_key,
                                                request_aes_key, 0x83);
@@ -310,6 +312,9 @@ Result<AtResponse> decode_at_response(const std::vector<uint8_t>& response_bytes
     auto request_hash = StaticBytes<16>::from(octet::bytes(&resp->requestHash));
     if (!request_hash) return Error::Decode;
     result.request_hash = *request_hash;
+
+    // TS 102 941 §6.2.3.3.2: requestHash = leftmost 16 octets of SHA-256 over the request as sent.
+    if (!request_hash_matches(request_bytes, result.request_hash)) return Error::SignatureInvalid;
 
     if (resp->certificate) {
         auto cert_bytes = coer::encode(&asn_DEF_CertificateBase, resp->certificate);

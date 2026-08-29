@@ -19,6 +19,11 @@ add_executable(test_result test_result.cpp)
 target_link_libraries(test_result PRIVATE v2xpki-facade GTest::gtest_main)
 gtest_discover_tests(test_result TEST_PREFIX pki.)
 
+add_executable(test_request_hash test_request_hash.cpp)
+target_include_directories(test_request_hash PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(test_request_hash PRIVATE v2xpki-crypto GTest::gtest_main)
+gtest_discover_tests(test_request_hash TEST_PREFIX pki.)
+
 add_executable(test_static_bytes test_static_bytes.cpp)
 target_include_directories(test_static_bytes PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(test_static_bytes PRIVATE GTest::gtest_main)

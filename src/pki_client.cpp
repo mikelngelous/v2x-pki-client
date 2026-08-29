@@ -94,7 +94,8 @@ Result<CertInfo> PkiClient::request_enrolment_credential(const KeyHandle& canoni
     if (resp->status_code != 200) return Error::HttpStatus;
 
     auto ec_resp = decode_ec_response(resp->body, kp->private_key.to_vector(),
-                                      req_result->request_aes_key.to_vector());
+                                      req_result->request_aes_key.to_vector(),
+                                      req_result->encoded.to_vector());
     if (!ec_resp) return ec_resp.error();
     if (ec_resp->response_code != EnrolmentResponseCode::Ok) return Error::Protocol;
 
@@ -134,7 +135,8 @@ Result<CertInfo> PkiClient::request_authorization_ticket(const KeyHandle& ec_han
     if (resp->status_code != 200) return Error::HttpStatus;
 
     auto at_resp = decode_at_response(resp->body, at_kp->private_key.to_vector(),
-                                      req_result->request_aes_key.to_vector());
+                                      req_result->request_aes_key.to_vector(),
+                                      req_result->encoded.to_vector());
     if (!at_resp) return at_resp.error();
     if (at_resp->response_code != AuthorizationResponseCode::Ok) return Error::Protocol;
 

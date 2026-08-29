@@ -69,8 +69,10 @@ struct AtResponse {
 
 // Decode AT response. request_aes_key is the 16B key from encode_at_request
 // (used for PSK-based response decryption per TS 102 941 §6.2.3.2.2).
+// request_bytes are the exact encoded request bytes POSTed; requestHash is checked against them.
 Result<AtResponse> decode_at_response(const std::vector<uint8_t>& response_bytes,
                                       const std::vector<uint8_t>& recipient_private_key,
-                                      const std::vector<uint8_t>& request_aes_key = {});
+                                      const std::vector<uint8_t>& request_aes_key,
+                                      const std::vector<uint8_t>& request_bytes);
 
 } // namespace v2xpki
