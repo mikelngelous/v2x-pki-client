@@ -418,6 +418,16 @@ int cmd_enrol(const Args &a) {
 
     if (!a.json) std::cout << "EA cert fetched (" << ea_resp->body.size() << "B)\n";
 
+    // validate_chain walks up to the RCA, so it must be local.
+    auto rca_resp = http.get(a.pki_url + "/trustanchor");
+    if (!rca_resp || rca_resp->status_code != 200) {
+        std::cerr << "error: failed to fetch trust anchor (HTTP "
+                  << (rca_resp ? rca_resp->status_code : 0) << ")\n";
+        return 1;
+    }
+    write_file(trust_dir + "/rca.cert", rca_resp->body);
+    if (!a.json) std::cout << "RCA cert fetched (" << rca_resp->body.size() << "B)\n";
+
     PkiClientConfig cfg;
     cfg.ea_url = ea_url;
     cfg.tlm_url = a.pki_url;
@@ -523,6 +533,15 @@ int cmd_request_at(const Args &a) {
     }
     fs::create_directories(trust_dir);
     write_file(trust_dir + "/aa.cert", aa_resp->body);
+
+    // validate_chain walks up to the RCA, so it must be local.
+    auto rca_resp = http.get(a.pki_url + "/trustanchor");
+    if (!rca_resp || rca_resp->status_code != 200) {
+        std::cerr << "error: failed to fetch trust anchor (HTTP "
+                  << (rca_resp ? rca_resp->status_code : 0) << ")\n";
+        return 1;
+    }
+    write_file(trust_dir + "/rca.cert", rca_resp->body);
     if (ea_resp && ea_resp->status_code == 200) write_file(trust_dir + "/ea.cert", ea_resp->body);
 
     std::string canonical_id;

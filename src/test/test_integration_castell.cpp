@@ -311,6 +311,7 @@ TEST_F(CastellTest, E2_EcRequestToCastell) {
     if (!ea_resp || ea_resp->status_code != 200) {
         GTEST_SKIP() << "cannot fetch EA cert";
     }
+    if (rca_bytes_.empty()) GTEST_SKIP() << "no RCA cert";
 
     auto tmp = fs::temp_directory_path() / "pki_integration_test";
     auto trust_dir = tmp / "certs";
@@ -318,10 +319,16 @@ TEST_F(CastellTest, E2_EcRequestToCastell) {
     fs::create_directories(trust_dir);
     fs::create_directories(keys_dir);
 
+    // validate_chain walks EC → EA → RCA, so both must be on disk.
     {
         std::ofstream ofs((trust_dir / "ea.cert").string(), std::ios::binary);
         ofs.write(reinterpret_cast<const char *>(ea_resp->body.data()),
                   static_cast<std::streamsize>(ea_resp->body.size()));
+    }
+    {
+        std::ofstream ofs((trust_dir / "rca.cert").string(), std::ios::binary);
+        ofs.write(reinterpret_cast<const char *>(rca_bytes_.data()),
+                  static_cast<std::streamsize>(rca_bytes_.size()));
     }
 
     auto kp = crypto::generate_keypair();
@@ -349,15 +356,11 @@ TEST_F(CastellTest, E2_EcRequestToCastell) {
     rec.validity_period_days = 30;
 
     auto result = client.request_enrolment_credential(handle, rec);
-
-    if (result) {
-        EXPECT_GT(result->cert_bytes.size(), 50u);
-    } else {
-        // Pass as caveat — Castell may require specific format or auth
-        SUCCEED();
-    }
-
     fs::remove_all(tmp);
+
+    ASSERT_TRUE(result) << "EC request failed: error " << static_cast<int>(result.error());
+    EXPECT_GT(result->cert_bytes.size(), 50u);
+    EXPECT_EQ(result->issuer_hash_id_8, ea_hid8);
 }
 
 // ==================== Group F: Verify Hardening ====================

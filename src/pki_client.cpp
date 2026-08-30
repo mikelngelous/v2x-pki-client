@@ -48,6 +48,15 @@ std::string find_dc_url(const std::vector<DcInfo>& dcs, const std::array<uint8_t
 
 }
 
+// Distinguishes "the caller's trust_dir is missing an anchor" from "the signature is bad".
+// Both make validate_chain return false, but they send an integrator to opposite places.
+bool issuer_chain_present(const TrustChain& trust, const CertInfo& cert) {
+    auto issuer = trust.find_by_hashed_id_8(cert.issuer_hash_id_8);
+    if (!issuer) return false;
+    if (issuer->is_self_signed) return true;
+    return trust.find_by_hashed_id_8(issuer->issuer_hash_id_8).has_value();
+}
+
 struct PkiClient::Impl {
     PkiClientConfig config;
     HttpClient http;
@@ -100,7 +109,13 @@ Result<CertInfo> PkiClient::request_enrolment_credential(const KeyHandle& canoni
     if (ec_resp->response_code != EnrolmentResponseCode::Ok) return Error::Protocol;
 
     if (!ec_resp->certificate) return Error::Protocol;
-    return *ec_resp->certificate;
+
+    auto ec_cert = *ec_resp->certificate;
+    ec_cert.label = "ec";
+    if (!issuer_chain_present(impl_->trust, ec_cert)) return Error::NotFound;
+    if (!impl_->trust.validate_chain(ec_cert)) return Error::SignatureInvalid;
+    impl_->trust.add_cert(ec_cert);
+    return ec_cert;
 }
 
 Result<CertInfo> PkiClient::request_authorization_ticket(const KeyHandle& ec_handle,
@@ -141,7 +156,13 @@ Result<CertInfo> PkiClient::request_authorization_ticket(const KeyHandle& ec_han
     if (at_resp->response_code != AuthorizationResponseCode::Ok) return Error::Protocol;
 
     if (!at_resp->certificate) return Error::Protocol;
-    return *at_resp->certificate;
+
+    auto at_cert = *at_resp->certificate;
+    at_cert.label = "at";
+    if (!issuer_chain_present(impl_->trust, at_cert)) return Error::NotFound;
+    if (!impl_->trust.validate_chain(at_cert)) return Error::SignatureInvalid;
+    impl_->trust.add_cert(at_cert);
+    return at_cert;
 }
 
 Result<CertInfo> PkiClient::fetch_trust_anchor() {
