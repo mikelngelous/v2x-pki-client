@@ -35,6 +35,7 @@ target_link_libraries(test_http_client PRIVATE v2xpki-transport GTest::gtest_mai
 gtest_discover_tests(test_http_client TEST_PREFIX pki.)
 
 add_executable(test_trust_chain test_trust_chain.cpp)
+target_include_directories(test_trust_chain PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(test_trust_chain PRIVATE v2xpki-transport GTest::gtest_main)
 gtest_discover_tests(test_trust_chain TEST_PREFIX pki.)
 

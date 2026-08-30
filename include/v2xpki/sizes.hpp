@@ -91,6 +91,10 @@ constexpr bool is_p256_size(Curve c) noexcept {
 
 // --- Protocol constants ---
 
+// Duration CHOICE multipliers that are not a plain chrono unit (IEEE 1609.2 §6.4.10).
+inline constexpr std::uint64_t kSixtyHoursSeconds = 60 * 3600;
+inline constexpr std::uint64_t kYearSeconds = 31556952; // IEEE 1609.2 definition of a year
+
 // TAI epoch: 2004-01-01T00:00:00Z (IEEE 1609.2 / ETSI TS 103 097)
 inline constexpr std::int64_t kTaiEpochUnix = 1072915200;
 

@@ -4,6 +4,7 @@
 #include "v2xpki/static_bytes.hpp"
 
 #include <algorithm>
+#include <ctime>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -73,12 +74,16 @@ std::optional<CertInfo> TrustChain::find_by_hashed_id_8(const std::array<uint8_t
     return it->second;
 }
 
-bool TrustChain::validate_chain(const CertInfo& at_cert) const {
+int64_t current_tai_seconds() { return static_cast<int64_t>(time(nullptr)) - kTaiEpochUnix; }
+
+bool TrustChain::validate_chain(const CertInfo& at_cert, int64_t now_tai) const {
     if (at_cert.is_self_signed) return false;
+    if (!at_cert.valid_at(now_tai)) return false;
 
     auto aa_opt = find_by_hashed_id_8(at_cert.issuer_hash_id_8);
     if (!aa_opt) return false;
     const auto& aa_cert = *aa_opt;
+    if (!aa_cert.valid_at(now_tai)) return false;
 
     if (!verify_cert_signature(at_cert, aa_cert)) return false;
 
@@ -89,6 +94,7 @@ bool TrustChain::validate_chain(const CertInfo& at_cert) const {
     auto rca_opt = find_by_hashed_id_8(aa_cert.issuer_hash_id_8);
     if (!rca_opt) return false;
     const auto& rca_cert = *rca_opt;
+    if (!rca_cert.valid_at(now_tai)) return false;
 
     if (!verify_cert_signature(aa_cert, rca_cert)) return false;
     if (!rca_cert.is_self_signed) return false;
@@ -335,6 +341,8 @@ std::optional<CertInfo> build_signed_cert(const std::string& name,
     ci.tbs_bytes = *tb; // TBS COER for signature verify
     ci.signature_r = sig_opt->r;
     ci.signature_s = sig_opt->s;
+    ci.validity_start = start_time;
+    ci.validity_duration_seconds = static_cast<uint64_t>(duration_years) * kYearSeconds;
     ci.label = name;
 
     if (is_self_signed) {

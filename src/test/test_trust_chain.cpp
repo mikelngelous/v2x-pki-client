@@ -7,6 +7,8 @@
 #include "v2xpki/trust_chain.hpp"
 #include "v2xpki/crypto_ec.hpp"
 
+#include "internal/cert_parse.hpp"
+
 #include <filesystem>
 #include <fstream>
 
@@ -156,6 +158,79 @@ TEST_F(TrustChainTest, BuildCertInvalidKey) {
                                                 pool_.rca_cert.hashed_id_8, false, false,
                                                 pool_.rca_cert.cert_bytes.to_vector());
     EXPECT_FALSE(result.has_value());
+}
+
+// --- Validity period enforcement ---
+
+TEST_F(TrustChainTest, ValidateChainRejectsExpiredCert) {
+    TrustChain tc;
+    tc.add_cert(pool_.rca_cert);
+    tc.add_cert(pool_.aa_cert);
+    tc.add_cert(pool_.at_cert);
+
+    // Synthetic certs start at TAI 0 and last 30 years; step past that.
+    int64_t past_expiry = static_cast<int64_t>(31) * kYearSeconds;
+    EXPECT_FALSE(tc.validate_chain(pool_.at_cert, past_expiry));
+}
+
+TEST_F(TrustChainTest, ValidateChainRejectsNotYetValidCert) {
+    TrustChain tc;
+    tc.add_cert(pool_.rca_cert);
+    tc.add_cert(pool_.aa_cert);
+    tc.add_cert(pool_.at_cert);
+
+    EXPECT_FALSE(tc.validate_chain(pool_.at_cert, -1));
+}
+
+TEST_F(TrustChainTest, ValidateChainAcceptsInsideValidityWindow) {
+    TrustChain tc;
+    tc.add_cert(pool_.rca_cert);
+    tc.add_cert(pool_.aa_cert);
+    tc.add_cert(pool_.at_cert);
+
+    EXPECT_TRUE(tc.validate_chain(pool_.at_cert, static_cast<int64_t>(kYearSeconds)));
+}
+
+TEST_F(TrustChainTest, ValidateChainRejectsExpiredIssuer) {
+    auto aa_expired = pool_.aa_cert;
+    aa_expired.validity_duration_seconds = 1;
+
+    TrustChain tc;
+    tc.add_cert(pool_.rca_cert);
+    tc.add_cert(aa_expired);
+    tc.add_cert(pool_.at_cert);
+
+    EXPECT_FALSE(tc.validate_chain(pool_.at_cert, static_cast<int64_t>(kYearSeconds)));
+}
+
+// TS 103 097 v2.2.1 §6: the end is exclusive.
+TEST_F(TrustChainTest, ValidityWindowEndIsExclusive) {
+    CertInfo cert = pool_.at_cert;
+    cert.validity_start = 100;
+    cert.validity_duration_seconds = 10;
+
+    EXPECT_TRUE(cert.valid_at(100));
+    EXPECT_TRUE(cert.valid_at(109));
+    EXPECT_FALSE(cert.valid_at(110));
+    EXPECT_FALSE(cert.valid_at(99));
+}
+
+TEST_F(TrustChainTest, CertWithoutDurationIsNeverValid) {
+    CertInfo no_duration = pool_.at_cert;
+    no_duration.validity_duration_seconds = 0;
+
+    EXPECT_FALSE(no_duration.valid_at(0));
+    EXPECT_FALSE(no_duration.valid_at(static_cast<int64_t>(kYearSeconds)));
+}
+
+TEST_F(TrustChainTest, ValidityParsedFromRealCert) {
+    // build_signed_cert asks for 30 years starting at the TAI epoch.
+    EXPECT_EQ(pool_.at_cert.validity_start, 0u);
+    EXPECT_EQ(pool_.at_cert.validity_duration_seconds, 30ull * kYearSeconds);
+
+    auto reparsed = cert::from_coer(pool_.at_cert.cert_bytes.to_vector());
+    EXPECT_EQ(reparsed.validity_start, pool_.at_cert.validity_start);
+    EXPECT_EQ(reparsed.validity_duration_seconds, pool_.at_cert.validity_duration_seconds);
 }
 
 TEST_F(TrustChainTest, LoadNonexistentDir) {

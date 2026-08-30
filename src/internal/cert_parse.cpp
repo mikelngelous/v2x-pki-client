@@ -17,6 +17,8 @@ extern "C" {
 #include "PublicVerificationKey.h"
 #include "BasePublicEncryptionKey.h"
 #include "ToBeSignedCertificate.h"
+#include "ValidityPeriod.h"
+#include "Duration.h"
 }
 
 namespace v2xpki::cert {
@@ -27,6 +29,26 @@ std::array<uint8_t, 8> compute_hid8(const std::vector<uint8_t> &cert_coer) {
     std::copy_n(hash.end() - kHashedId8Len, kHashedId8Len, hid8.begin());
     return hid8;
 }
+
+namespace {
+
+// IEEE 1609.2 §6.4.10. Absent or unknown CHOICE → 0, which callers read as expired: fail closed.
+uint64_t duration_seconds(const struct Duration *d) {
+    if (!d) return 0;
+    switch (d->present) {
+        case Duration_PR_microseconds: return d->choice.microseconds / 1000000;
+        case Duration_PR_milliseconds: return d->choice.milliseconds / 1000;
+        case Duration_PR_seconds: return d->choice.seconds;
+        case Duration_PR_minutes: return static_cast<uint64_t>(d->choice.minutes) * 60;
+        case Duration_PR_hours: return static_cast<uint64_t>(d->choice.hours) * 3600;
+        case Duration_PR_sixtyHours:
+            return static_cast<uint64_t>(d->choice.sixtyHours) * kSixtyHoursSeconds;
+        case Duration_PR_years: return static_cast<uint64_t>(d->choice.years) * kYearSeconds;
+        default: return 0;
+    }
+}
+
+} // namespace
 
 CertInfo from_struct(const struct CertificateBase *cert, const std::vector<uint8_t> &cert_coer) {
     CertInfo ci;
@@ -104,6 +126,11 @@ CertInfo from_struct(const struct CertificateBase *cert, const std::vector<uint8
                 ci.encryption_key = *ek;
             ci.enc_curve = Curve::BrainpoolP256r1;
         }
+    }
+
+    if (cert->toBeSigned && cert->toBeSigned->validityPeriod) {
+        ci.validity_start = static_cast<uint32_t>(cert->toBeSigned->validityPeriod->start);
+        ci.validity_duration_seconds = duration_seconds(cert->toBeSigned->validityPeriod->duration);
     }
 
     // TBS bytes (for signature verification)

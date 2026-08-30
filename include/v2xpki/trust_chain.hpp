@@ -12,6 +12,8 @@
 
 namespace v2xpki {
 
+int64_t current_tai_seconds();
+
 struct CertInfo {
     StaticBytes<kMaxCoerMessageLen> cert_bytes; // COER-encoded cert (wire format)
     std::array<uint8_t, 8> hashed_id_8; // SHA-256(cert_bytes)[-8:]
@@ -26,7 +28,18 @@ struct CertInfo {
     StaticBytes<kP384ScalarLen> signature_r; // 32 or 48 bytes
     StaticBytes<kP384ScalarLen> signature_s; // 32 or 48 bytes
     Curve curve = Curve::NistP256; // detected from PublicVerificationKey variant
+    uint32_t validity_start = 0; // Time32, seconds since the TAI epoch
+    // Zero = no usable duration, and reads as already expired (see cert_parse).
+    uint64_t validity_duration_seconds = 0;
     std::string label; // descriptive name
+
+    // TS 103 097 v2.2.1 §6: "start inclusive and the end exclusive". Not stated in v1.4.1.
+    bool valid_at(int64_t tai_seconds) const {
+        if (validity_duration_seconds == 0) return false;
+        auto start = static_cast<int64_t>(validity_start);
+        return tai_seconds >= start &&
+               tai_seconds < start + static_cast<int64_t>(validity_duration_seconds);
+    }
 };
 
 class TrustChain {
@@ -39,8 +52,8 @@ public:
 
     std::optional<CertInfo> find_by_hashed_id_8(const std::array<uint8_t, 8>& hid8) const;
 
-    // Validates AT → AA → RCA.
-    bool validate_chain(const CertInfo& at_cert) const;
+    // Role-agnostic: an EC → EA → RCA chain validates like an AT → AA → RCA one.
+    bool validate_chain(const CertInfo& at_cert, int64_t now_tai = current_tai_seconds()) const;
 
     std::vector<CertInfo> get_rcas() const;
     std::vector<CertInfo> get_aas() const;
