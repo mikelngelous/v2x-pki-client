@@ -12,6 +12,8 @@
 
 namespace v2xpki {
 
+class RevocationStore;
+
 int64_t current_tai_seconds();
 
 struct CertInfo {
@@ -65,10 +67,15 @@ public:
     // IEEE 1609.2 §5.3.1 certificate signature verification (double-hash).
     bool verify_cert_signature(const CertInfo& cert, const CertInfo& issuer) const;
 
+    // Not owned; must outlive this TrustChain.
+    void set_revocation_store(const RevocationStore* store) { revocation_ = store; }
+
 private:
     std::map<std::array<uint8_t, 8>, CertInfo> certs_;
+    const RevocationStore* revocation_ = nullptr;
 
     std::vector<CertInfo> get_by_prefix(const std::string& prefix) const;
+    bool is_revoked_by_issuer(const CertInfo& cert, const CertInfo& issuer) const;
 };
 
 // Helpers to build synthetic cert pools for tests.

@@ -6,6 +6,7 @@
 
 #include "v2xpki/trust_chain.hpp"
 #include "v2xpki/crypto_ec.hpp"
+#include "v2xpki/revocation.hpp"
 
 #include "internal/cert_parse.hpp"
 
@@ -231,6 +232,69 @@ TEST_F(TrustChainTest, ValidityParsedFromRealCert) {
     auto reparsed = cert::from_coer(pool_.at_cert.cert_bytes.to_vector());
     EXPECT_EQ(reparsed.validity_start, pool_.at_cert.validity_start);
     EXPECT_EQ(reparsed.validity_duration_seconds, pool_.at_cert.validity_duration_seconds);
+}
+
+// --- Revocation (TS 102 941 §6.3.3) ---
+
+TEST_F(TrustChainTest, ValidateChainRejectsRevokedIntermediate) {
+    RevocationStore store;
+    CrlContents crl;
+    crl.issuer_hid8 = pool_.rca_cert.hashed_id_8; // the RCA revokes its own AA
+    crl.revoked = {pool_.aa_cert.hashed_id_8};
+    ASSERT_TRUE(store.apply(crl));
+
+    TrustChain tc;
+    tc.set_revocation_store(&store);
+    tc.add_cert(pool_.rca_cert);
+    tc.add_cert(pool_.aa_cert);
+    tc.add_cert(pool_.at_cert);
+
+    EXPECT_FALSE(tc.validate_chain(pool_.at_cert));
+}
+
+TEST_F(TrustChainTest, ValidateChainIgnoresRevocationFromWrongIssuer) {
+    RevocationStore store;
+    CrlContents crl;
+    crl.issuer_hid8 = pool_.at_cert.hashed_id_8; // not the AA's issuer
+    crl.revoked = {pool_.aa_cert.hashed_id_8};
+    ASSERT_TRUE(store.apply(crl));
+
+    TrustChain tc;
+    tc.set_revocation_store(&store);
+    tc.add_cert(pool_.rca_cert);
+    tc.add_cert(pool_.aa_cert);
+    tc.add_cert(pool_.at_cert);
+
+    EXPECT_TRUE(tc.validate_chain(pool_.at_cert));
+}
+
+TEST_F(TrustChainTest, ValidateChainPassesWithEmptyRevocationStore) {
+    RevocationStore store;
+
+    TrustChain tc;
+    tc.set_revocation_store(&store);
+    tc.add_cert(pool_.rca_cert);
+    tc.add_cert(pool_.aa_cert);
+    tc.add_cert(pool_.at_cert);
+
+    EXPECT_TRUE(tc.validate_chain(pool_.at_cert));
+}
+
+// §6.3.3 NOTE 1: "The CRL may contain the revoked certificate of the Root CA."
+TEST_F(TrustChainTest, ValidateChainRejectsRevokedRoot) {
+    RevocationStore store;
+    CrlContents crl;
+    crl.issuer_hid8 = pool_.rca_cert.hashed_id_8;
+    crl.revoked = {pool_.rca_cert.hashed_id_8};
+    ASSERT_TRUE(store.apply(crl));
+
+    TrustChain tc;
+    tc.set_revocation_store(&store);
+    tc.add_cert(pool_.rca_cert);
+    tc.add_cert(pool_.aa_cert);
+    tc.add_cert(pool_.at_cert);
+
+    EXPECT_FALSE(tc.validate_chain(pool_.at_cert));
 }
 
 TEST_F(TrustChainTest, LoadNonexistentDir) {

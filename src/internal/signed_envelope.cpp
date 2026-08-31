@@ -138,11 +138,7 @@ std::vector<uint8_t> finalize_signed_data(ToBeSignedData_t *tbs,
     return result;
 }
 
-}
-
-std::vector<uint8_t> build_self_signed(const std::vector<uint8_t> &payload_bytes,
-                                       const std::vector<uint8_t> &private_key, Curve curve) {
-
+ToBeSignedData_t *make_unsecured_tbs(const std::vector<uint8_t> &payload_bytes) {
     auto *tbs = asn_calloc<ToBeSignedData_t>();
 
     auto *payload = asn_calloc<SignedDataPayload_t>();
@@ -163,7 +159,21 @@ std::vector<uint8_t> build_self_signed(const std::vector<uint8_t> &payload_bytes
     hdr->generationTime = gen_time;
     tbs->headerInfo = hdr;
 
-    return finalize_signed_data(tbs, private_key, {}, {}, curve);
+    return tbs;
+}
+
+}
+
+std::vector<uint8_t> build_self_signed(const std::vector<uint8_t> &payload_bytes,
+                                       const std::vector<uint8_t> &private_key, Curve curve) {
+    return finalize_signed_data(make_unsecured_tbs(payload_bytes), private_key, {}, {}, curve);
+}
+
+std::vector<uint8_t> build_signed_by_cert(const std::vector<uint8_t> &payload_bytes,
+                                          const CertInfo &signer_cert,
+                                          const std::vector<uint8_t> &private_key, Curve curve) {
+    return finalize_signed_data(make_unsecured_tbs(payload_bytes), private_key,
+                                signer_cert.cert_bytes.to_vector(), signer_cert.hashed_id_8, curve);
 }
 
 std::vector<uint8_t> build_external_payload(const std::vector<uint8_t> &ext_data_hash,

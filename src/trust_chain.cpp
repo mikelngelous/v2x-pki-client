@@ -2,6 +2,7 @@
 #include "v2xpki/crypto_ec.hpp"
 #include "v2xpki/sizes.hpp"
 #include "v2xpki/static_bytes.hpp"
+#include "v2xpki/revocation.hpp"
 
 #include <algorithm>
 #include <ctime>
@@ -86,8 +87,10 @@ bool TrustChain::validate_chain(const CertInfo& at_cert, int64_t now_tai) const 
     if (!aa_cert.valid_at(now_tai)) return false;
 
     if (!verify_cert_signature(at_cert, aa_cert)) return false;
+    if (is_revoked_by_issuer(at_cert, aa_cert)) return false;
 
     if (aa_cert.is_self_signed) {
+        if (is_revoked_by_issuer(aa_cert, aa_cert)) return false;
         return verify_cert_signature(aa_cert, aa_cert);
     }
 
@@ -97,8 +100,16 @@ bool TrustChain::validate_chain(const CertInfo& at_cert, int64_t now_tai) const 
     if (!rca_cert.valid_at(now_tai)) return false;
 
     if (!verify_cert_signature(aa_cert, rca_cert)) return false;
+    if (is_revoked_by_issuer(aa_cert, rca_cert)) return false;
     if (!rca_cert.is_self_signed) return false;
+    // TS 102 941 §6.3.3 NOTE 1: "The CRL may contain the revoked certificate of the Root CA."
+    if (is_revoked_by_issuer(rca_cert, rca_cert)) return false;
     return verify_cert_signature(rca_cert, rca_cert);
+}
+
+bool TrustChain::is_revoked_by_issuer(const CertInfo& cert, const CertInfo& issuer) const {
+    if (!revocation_) return false;
+    return revocation_->is_revoked(issuer.hashed_id_8, cert.hashed_id_8);
 }
 
 std::vector<CertInfo> TrustChain::get_rcas() const { return get_by_prefix("rca_"); }

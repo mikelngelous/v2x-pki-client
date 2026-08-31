@@ -18,6 +18,12 @@ std::vector<uint8_t> build_self_signed(const std::vector<uint8_t>& payload_bytes
                                        const std::vector<uint8_t>& private_key,
                                        Curve curve = Curve::NistP256);
 
+// signer=digest(signer_cert HID8) — the form TS 102 941 uses for CTL/CRL messages.
+std::vector<uint8_t> build_signed_by_cert(const std::vector<uint8_t>& payload_bytes,
+                                          const CertInfo& signer_cert,
+                                          const std::vector<uint8_t>& private_key,
+                                          Curve curve = Curve::NistP256);
+
 // Build Ieee1609Dot2Data{signedData} with extDataHash (SignedExternalPayload).
 // signer=digest(ec_cert HID8), IEEE 1609.2 §5.3.1 double hash.
 // signer_identifier_input = COER(certificate) per §5.3.1.

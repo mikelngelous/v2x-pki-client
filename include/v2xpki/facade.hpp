@@ -14,6 +14,7 @@
 #include "v2xpki/key_store.hpp"
 #include "v2xpki/result.hpp"
 #include "v2xpki/trust_chain.hpp"
+#include "v2xpki/revocation.hpp"
 #include "v2xpki/trust_list.hpp"
 
 namespace v2xpki {
@@ -71,7 +72,8 @@ public:
     // --- Legacy trust list (kept for backward compat) ---
 
     Result<std::vector<CertInfo>> fetch_ectl();
-    Result<std::vector<CertInfo>> fetch_crl(const std::array<uint8_t, 8>& rca_hid8);
+    // Entries are HashedId8 of CA certificates, not certificates.
+    Result<CrlContents> fetch_crl(const std::array<uint8_t, 8>& rca_hid8);
 
     // --- Accessors ---
     const TrustChain& trust_chain() const;

@@ -41,6 +41,7 @@ add_library(v2xpki-transport STATIC
     http_client.cpp
     trust_chain.cpp
     trust_list.cpp
+    revocation.cpp
 )
 target_link_libraries(v2xpki-transport PUBLIC v2xpki-crypto CURL::libcurl)
 target_include_directories(v2xpki-transport PUBLIC

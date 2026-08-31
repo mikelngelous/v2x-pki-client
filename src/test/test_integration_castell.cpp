@@ -281,6 +281,23 @@ TEST_F(CastellTest, D2_Crl) {
     }
 }
 
+TEST_F(CastellTest, D3_CrlDecodedAgainstRca) {
+    if (rca_bytes_.empty()) GTEST_SKIP() << "no RCA cert";
+    auto resp = http_.get(std::string(CASTELL_URL) + "/getcrl/" + RCA_HID8_HEX);
+    ASSERT_TRUE(resp.has_value());
+    ASSERT_EQ(resp->status_code, 200);
+
+    auto rca = cert::from_coer(rca_bytes_);
+    ASSERT_FALSE(rca.public_key.empty());
+
+    auto crl = decode_crl(resp->body, rca.public_key.to_vector(), rca_bytes_);
+    ASSERT_TRUE(crl) << "error " << static_cast<int>(crl.error());
+
+    EXPECT_EQ(hid8_hex(crl->issuer_hid8), RCA_HID8_HEX);
+    EXPECT_GT(crl->this_update, 0u);
+    EXPECT_GT(crl->next_update, crl->this_update);
+}
+
 // ==================== Group E: Enrolment flow ====================
 
 TEST_F(CastellTest, E1_EaCert) {

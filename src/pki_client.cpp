@@ -62,12 +62,14 @@ struct PkiClient::Impl {
     HttpClient http;
     TrustChain trust;
     PlaintextFileKeyStore keystore;
+    RevocationStore revocation;
     std::optional<TrustTopology> topology;
 
     Impl(const PkiClientConfig& cfg)
         : config(cfg)
         , http(HttpClientConfig{cfg.ca_bundle_path, cfg.timeout, cfg.verify_tls})
         , keystore(cfg.keystore_dir) {
+        trust.set_revocation_store(&revocation);
         if (!cfg.trust_dir.empty()) {
             trust.load_from_directory(cfg.trust_dir);
         }
@@ -358,7 +360,7 @@ Result<std::vector<CertInfo>> PkiClient::fetch_ectl() {
     return certs;
 }
 
-Result<std::vector<CertInfo>> PkiClient::fetch_crl(const std::array<uint8_t, 8>& rca_hid8) {
+Result<CrlContents> PkiClient::fetch_crl(const std::array<uint8_t, 8>& rca_hid8) {
     auto hex = hid8_hex_upper(rca_hid8);
     auto dc_url = impl_->topology
                       ? find_dc_url(impl_->topology->dcs, rca_hid8, impl_->config.tlm_url)
@@ -368,8 +370,14 @@ Result<std::vector<CertInfo>> PkiClient::fetch_crl(const std::array<uint8_t, 8>&
     if (!resp) return resp.error();
     if (resp->status_code != 200) return Error::HttpStatus;
 
-    // TODO: parse CRL payload (ToBeSignedCrl).
-    return std::vector<CertInfo>{};
+    auto rca = impl_->trust.find_by_hashed_id_8(rca_hid8);
+    if (!rca) return Error::NotFound;
+
+    auto crl = decode_crl(resp->body, rca->public_key.to_vector(), rca->cert_bytes.to_vector());
+    if (!crl) return crl.error();
+
+    if (!impl_->revocation.apply(*crl)) return Error::Protocol; // stale CRL
+    return *crl;
 }
 
 } // namespace v2xpki
