@@ -10,6 +10,7 @@
 
 #include "internal/cert_parse.hpp"
 
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 
@@ -159,6 +160,24 @@ TEST_F(TrustChainTest, BuildCertInvalidKey) {
                                                 pool_.rca_cert.hashed_id_8, false, false,
                                                 pool_.rca_cert.cert_bytes.to_vector());
     EXPECT_FALSE(result.has_value());
+}
+
+// --- Time32/Time64 conversion ---
+
+// 2017-01-01T00:00:00Z = Unix 1483228800, the day TAI-UTC reached 37 s.
+TEST(TaiTimeTest, KnownAnswer) {
+    EXPECT_EQ(unix_to_tai_seconds(1483228800), 410313605);
+    EXPECT_EQ(unix_to_tai_micros(1483228800LL * 1000000), 410313605LL * 1000000);
+}
+
+TEST(TaiTimeTest, LeadsUtcDerivedCountByFiveSeconds) {
+    int64_t now = 1787961600; // 2026-08-29T00:00:00Z
+    EXPECT_EQ(unix_to_tai_seconds(now) - (now - kTaiEpochUnix), kTaiMinusUtcSeconds);
+}
+
+TEST(TaiTimeTest, CurrentTaiTracksWallClock) {
+    auto expected = unix_to_tai_seconds(static_cast<int64_t>(time(nullptr)));
+    EXPECT_NEAR(static_cast<double>(current_tai_seconds()), static_cast<double>(expected), 2.0);
 }
 
 // --- Validity period enforcement ---

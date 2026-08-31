@@ -77,9 +77,6 @@ std::optional<CertInfo> cert_ptr_to_info(const void *cert_void, const std::strin
     return ci;
 }
 
-// TAI epoch: 2004-01-01T00:00:00 UTC in Unix time.
-constexpr int64_t kTaiEpochUnix = 1072915200;
-
 // Parse CtlFormat entries into TrustTopology.
 void parse_ctl_entries(const CtlFormat_t *ctl, TrustTopology &topo, bool is_ectl) {
     // Store nextUpdate (Time32 = seconds since TAI epoch 2004-01-01).
@@ -91,7 +88,7 @@ void parse_ctl_entries(const CtlFormat_t *ctl, TrustTopology &topo, bool is_ectl
 
     // Check freshness: warn if expired, but do NOT reject.
     if (next_update > 0) {
-        auto now_tai = static_cast<int64_t>(time(nullptr)) - kTaiEpochUnix;
+        auto now_tai = unix_to_tai_seconds(static_cast<int64_t>(time(nullptr)));
         if (now_tai > static_cast<int64_t>(next_update)) {
             if (is_ectl) {
                 topo.ectl_expired = true;

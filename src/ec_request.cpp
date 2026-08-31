@@ -44,8 +44,9 @@ namespace {
 
 uint32_t unix_to_tai32(std::chrono::system_clock::time_point tp) {
     auto secs = std::chrono::duration_cast<std::chrono::seconds>(tp.time_since_epoch()).count();
-    if (secs < kTaiEpochUnix) return 0;
-    return static_cast<uint32_t>(secs - kTaiEpochUnix);
+    auto tai = unix_to_tai_seconds(secs);
+    if (tai < 0) return 0;
+    return static_cast<uint32_t>(tai);
 }
 
 }

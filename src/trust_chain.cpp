@@ -75,7 +75,7 @@ std::optional<CertInfo> TrustChain::find_by_hashed_id_8(const std::array<uint8_t
     return it->second;
 }
 
-int64_t current_tai_seconds() { return static_cast<int64_t>(time(nullptr)) - kTaiEpochUnix; }
+int64_t current_tai_seconds() { return unix_to_tai_seconds(static_cast<int64_t>(time(nullptr))); }
 
 bool TrustChain::validate_chain(const CertInfo& at_cert, int64_t now_tai) const {
     if (at_cert.is_self_signed) return false;

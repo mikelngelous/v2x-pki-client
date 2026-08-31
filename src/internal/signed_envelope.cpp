@@ -31,11 +31,10 @@ namespace v2xpki::sign {
 namespace {
 
 uint64_t current_generation_time() {
-    auto now_us = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
-                                            std::chrono::system_clock::now().time_since_epoch())
-                                            .count());
-    uint64_t tai_epoch_us = static_cast<uint64_t>(kTaiEpochUnix) * 1000000ULL;
-    return now_us - tai_epoch_us;
+    auto now_us = static_cast<int64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                           std::chrono::system_clock::now().time_since_epoch())
+                                           .count());
+    return static_cast<uint64_t>(unix_to_tai_micros(now_us));
 }
 
 // Build the ASN.1 Signature node for the given curve.

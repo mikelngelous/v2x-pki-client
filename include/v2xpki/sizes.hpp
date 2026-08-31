@@ -98,6 +98,18 @@ inline constexpr std::uint64_t kYearSeconds = 31556952; // IEEE 1609.2 definitio
 // TAI epoch: 2004-01-01T00:00:00Z (IEEE 1609.2 / ETSI TS 103 097)
 inline constexpr std::int64_t kTaiEpochUnix = 1072915200;
 
+// Leap seconds inserted since the 2004 epoch: TAI-UTC went 32 s to 37 s. Present-day only.
+// TODO: revisit if a leap second is ever inserted again.
+inline constexpr std::int64_t kTaiMinusUtcSeconds = 5;
+
+constexpr std::int64_t unix_to_tai_seconds(std::int64_t unix_seconds) {
+    return unix_seconds - kTaiEpochUnix + kTaiMinusUtcSeconds;
+}
+
+constexpr std::int64_t unix_to_tai_micros(std::int64_t unix_micros) {
+    return unix_micros - (kTaiEpochUnix - kTaiMinusUtcSeconds) * 1000000;
+}
+
 // TS 102 941 v2 PSID for Secured Certificate Request (SCR) = 623 (0x26F)
 inline constexpr std::int64_t kPsidScr = 623;
 
