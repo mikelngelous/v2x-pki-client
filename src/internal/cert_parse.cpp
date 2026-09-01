@@ -19,15 +19,45 @@ extern "C" {
 #include "ToBeSignedCertificate.h"
 #include "ValidityPeriod.h"
 #include "Duration.h"
+#include "HashAlgorithm.h"
 }
 
 namespace v2xpki::cert {
 
-std::array<uint8_t, 8> compute_hid8(const std::vector<uint8_t> &cert_coer) {
-    auto hash = crypto::hash_sha256(cert_coer);
+namespace {
+
+// An implicit certificate carries no verification key; SHA-256 is the fallback there.
+Curve whole_cert_hash_curve(const struct CertificateBase *cert) {
+    if (!cert || !cert->toBeSigned || !cert->toBeSigned->verifyKeyIndicator) return Curve::NistP256;
+    const auto *vki = cert->toBeSigned->verifyKeyIndicator;
+    if (vki->present != VerificationKeyIndicator_PR_verificationKey || !vki->choice.verificationKey)
+        return Curve::NistP256;
+
+    switch (vki->choice.verificationKey->present) {
+        case PublicVerificationKey_PR_ecdsaBrainpoolP384r1: return Curve::BrainpoolP384r1;
+        case PublicVerificationKey_PR_ecdsaNistP384: return Curve::NistP384;
+        default: return Curve::NistP256;
+    }
+}
+
+std::array<uint8_t, 8> truncate_hid8(const std::vector<uint8_t> &hash) {
     std::array<uint8_t, 8> hid8{};
+    if (hash.size() < kHashedId8Len) return hid8;
     std::copy_n(hash.end() - kHashedId8Len, kHashedId8Len, hid8.begin());
     return hid8;
+}
+
+} // namespace
+
+std::array<uint8_t, 8> compute_hid8(const struct CertificateBase *cert,
+                                    const std::vector<uint8_t> &cert_coer) {
+    return truncate_hid8(crypto::hash_for_curve(cert_coer, whole_cert_hash_curve(cert)));
+}
+
+std::array<uint8_t, 8> compute_hid8(const std::vector<uint8_t> &cert_coer) {
+    auto cert = asn_decode<CertificateBase_t>(asn_DEF_CertificateBase, cert_coer.data(),
+                                              cert_coer.size());
+    return compute_hid8(cert.get(), cert_coer);
 }
 
 namespace {
@@ -54,12 +84,13 @@ CertInfo from_struct(const struct CertificateBase *cert, const std::vector<uint8
     CertInfo ci;
     // Empty on overflow reuses the "decode failed" signal callers already check.
     if (auto cb = StaticBytes<kMaxCoerMessageLen>::from(cert_coer)) ci.cert_bytes = *cb;
-    ci.hashed_id_8 = compute_hid8(cert_coer);
+    ci.hashed_id_8 = compute_hid8(cert, cert_coer);
 
     // Issuer
     if (cert->issuer) {
         if (cert->issuer->present == IssuerIdentifier_PR_self) {
             ci.is_self_signed = true;
+            if (cert->issuer->choice.self == HashAlgorithm_sha384) ci.issuer_hash = SigHash::Sha384;
         } else if (cert->issuer->present == IssuerIdentifier_PR_sha256AndDigest) {
             ci.is_self_signed = false;
             auto issuer_bytes = octet::bytes(&cert->issuer->choice.sha256AndDigest);
@@ -68,6 +99,7 @@ CertInfo from_struct(const struct CertificateBase *cert, const std::vector<uint8
             }
         } else if (cert->issuer->present == IssuerIdentifier_PR_sha384AndDigest) {
             ci.is_self_signed = false;
+            ci.issuer_hash = SigHash::Sha384;
             auto issuer_bytes = octet::bytes(&cert->issuer->choice.sha384AndDigest);
             if (issuer_bytes.size() == kHashedId8Len) {
                 std::copy_n(issuer_bytes.begin(), kHashedId8Len, ci.issuer_hash_id_8.begin());

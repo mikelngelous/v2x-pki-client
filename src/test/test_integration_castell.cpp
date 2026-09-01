@@ -57,10 +57,7 @@ static std::string hid8_hex(const std::array<uint8_t, 8> &h) {
 }
 
 static std::array<uint8_t, 8> compute_hid8(const std::vector<uint8_t> &cert_coer) {
-    auto hash = crypto::hash_sha256(cert_coer);
-    std::array<uint8_t, 8> hid8{};
-    std::copy_n(hash.end() - 8, 8, hid8.begin());
-    return hid8;
+    return cert::compute_hid8(cert_coer);
 }
 
 static std::string body_to_string(const std::vector<uint8_t> &body) {

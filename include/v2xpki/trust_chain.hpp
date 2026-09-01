@@ -30,6 +30,7 @@ struct CertInfo {
     StaticBytes<kP384ScalarLen> signature_r; // 32 or 48 bytes
     StaticBytes<kP384ScalarLen> signature_s; // 32 or 48 bytes
     Curve curve = Curve::NistP256; // detected from PublicVerificationKey variant
+    SigHash issuer_hash = SigHash::Sha256; // from the IssuerIdentifier CHOICE
     uint32_t validity_start = 0; // Time32, seconds since the TAI epoch
     // Zero = no usable duration, and reads as already expired (see cert_parse).
     uint64_t validity_duration_seconds = 0;

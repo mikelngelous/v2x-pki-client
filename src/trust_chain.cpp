@@ -118,31 +118,36 @@ std::vector<CertInfo> TrustChain::get_eas() const { return get_by_prefix("ea_");
 std::vector<CertInfo> TrustChain::get_tlms() const { return get_by_prefix("tlm_"); }
 
 bool TrustChain::verify_cert_signature(const CertInfo& cert, const CertInfo& issuer) const {
-    auto slen = scalar_len(cert.curve);
+    auto slen = scalar_len(issuer.curve);
     if (cert.tbs_bytes.empty() || cert.signature_r.size() != slen ||
         cert.signature_s.size() != slen)
         return false;
     if (issuer.public_key.empty()) return false;
 
+    auto hash = [&](const std::vector<uint8_t>& data) {
+        return cert.issuer_hash == SigHash::Sha384 ? crypto::hash_sha384(data)
+                                                   : crypto::hash_sha256(data);
+    };
+
     // IEEE 1609.2 §5.3.1: e = H( H(COER(toBeSigned)) || H(signerIdentifierInput) )
-    auto tbs_hash = crypto::hash_for_curve(cert.tbs_bytes.to_vector(), cert.curve);
+    auto tbs_hash = hash(cert.tbs_bytes.to_vector());
     std::vector<uint8_t> signer_input;
     if (cert.is_self_signed)
         signer_input = {}; // self-signed: signerIdentifierInput is empty
     else
         signer_input = issuer.cert_bytes.to_vector(); // issuer cert COER bytes
-    auto signer_hash = crypto::hash_for_curve(signer_input, cert.curve);
+    auto signer_hash = hash(signer_input);
 
     std::vector<uint8_t> concat;
     concat.reserve(tbs_hash.size() + signer_hash.size());
     concat.insert(concat.end(), tbs_hash.begin(), tbs_hash.end());
     concat.insert(concat.end(), signer_hash.begin(), signer_hash.end());
-    auto digest = crypto::hash_for_curve(concat, cert.curve);
+    auto digest = hash(concat);
 
     Signature sig;
     sig.r = cert.signature_r;
     sig.s = cert.signature_s;
-    return crypto::ecdsa_verify_digest(issuer.public_key.to_vector(), digest, sig, cert.curve);
+    return crypto::ecdsa_verify_digest(issuer.public_key.to_vector(), digest, sig, issuer.curve);
 }
 
 std::vector<CertInfo> TrustChain::get_by_prefix(const std::string& prefix) const {

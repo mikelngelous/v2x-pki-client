@@ -2,6 +2,8 @@
 
 #include "io.hpp"
 #include "v2xpki/crypto_ec.hpp"
+
+#include "internal/cert_parse.hpp"
 #include "v2xpki/sizes.hpp"
 
 extern "C" {
@@ -62,10 +64,7 @@ bool write_file(const std::string &path, const std::vector<uint8_t> &data) {
 }
 
 std::array<uint8_t, 8> compute_hid8(const std::vector<uint8_t> &cert_coer) {
-    auto hash = crypto::hash_sha256(cert_coer);
-    std::array<uint8_t, 8> hid8{};
-    std::copy_n(hash.end() - kHashedId8Len, kHashedId8Len, hid8.begin());
-    return hid8;
+    return cert::compute_hid8(cert_coer);
 }
 
 CertSummary parse_cert_summary(const std::vector<uint8_t> &coer) {

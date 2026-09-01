@@ -27,6 +27,12 @@ inline constexpr std::size_t kSha384Len = 48;
 // Whole-message COER cap — a policy choice (not spec-bound); overflow fails, never truncates.
 inline constexpr std::size_t kMaxCoerMessageLen = 2048;
 
+// Belongs to the issuer, not to the subject key, so it cannot be derived from Curve.
+enum class SigHash : uint8_t {
+    Sha256,
+    Sha384,
+};
+
 // --- Curve identifier (static dispatch, no virtual) ---
 enum class Curve : uint8_t {
     NistP256,

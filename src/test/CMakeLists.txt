@@ -48,6 +48,13 @@ target_include_directories(test_crl_decode PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(test_crl_decode PRIVATE v2xpki-transport GTest::gtest_main)
 gtest_discover_tests(test_crl_decode TEST_PREFIX pki.)
 
+add_executable(test_whole_cert_hash test_whole_cert_hash.cpp)
+target_include_directories(test_whole_cert_hash PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_definitions(test_whole_cert_hash PRIVATE
+    FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+target_link_libraries(test_whole_cert_hash PRIVATE v2xpki-transport GTest::gtest_main)
+gtest_discover_tests(test_whole_cert_hash TEST_PREFIX pki.)
+
 add_executable(test_trust_list test_trust_list.cpp)
 target_link_libraries(test_trust_list PRIVATE v2xpki-facade GTest::gtest_main)
 gtest_discover_tests(test_trust_list TEST_PREFIX pki.)
