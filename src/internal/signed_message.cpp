@@ -84,7 +84,8 @@ bool verify(const SignedMessage &data, const std::vector<uint8_t> &verifier_pubk
     auto slen = scalar_len(data.sig_curve);
     if (data.sig_r.size() != slen || data.sig_s.size() != slen) return false;
 
-    // Verify signer HID8 from wire matches the actual signer cert.
+    // TS 102 941 §6.3.4: a CTL carries signer=certificate, so only a digest binds the caller's.
+    // TODO: when signer=certificate, verify against the embedded cert instead of the caller's.
     if (data.has_signer_digest) {
         auto computed_hid8 = cert::compute_hid8(signer_cert_coer);
         if (computed_hid8 != data.signer_hid8) return false;

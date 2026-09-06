@@ -298,10 +298,11 @@ Result<AtRequestResult> encode_at_request(const AtRequestDescription& desc, cons
 Result<AtResponse> decode_at_response(const std::vector<uint8_t>& response_bytes,
                                       const std::vector<uint8_t>& recipient_private_key,
                                       const std::vector<uint8_t>& request_aes_key,
-                                      const std::vector<uint8_t>& request_bytes) {
+                                      const std::vector<uint8_t>& request_bytes,
+                                      const CertInfo& signer_cert) {
 
     auto inner_bytes = enc::decrypt_and_unwrap(response_bytes, recipient_private_key,
-                                               request_aes_key, 0x83);
+                                               request_aes_key, 0x83, signer_cert);
     if (!inner_bytes) return inner_bytes.error();
 
     auto resp = asn_decode<InnerAtResponse_t>(asn_DEF_InnerAtResponse, inner_bytes->data(),

@@ -3,6 +3,7 @@
 #include "encrypted_data.hpp"
 #include "asn_ptr.hpp"
 #include "coer.hpp"
+#include "signed_message.hpp"
 #include "curve_point.hpp"
 #include "v2xpki/sizes.hpp"
 
@@ -139,41 +140,18 @@ std::optional<std::vector<uint8_t>> decrypt_encrypted_content(const EncryptedDat
     return std::nullopt;
 }
 
-// Unwrap signed envelope: extract unsecuredData from SignedData payload.
-std::vector<uint8_t> unwrap_signed_envelope(const std::vector<uint8_t> &data) {
-    auto signed_outer = asn_decode<Ieee1609Dot2Data_t>(asn_DEF_Ieee1609Dot2Data, data.data(),
-                                                       data.size());
-    if (!signed_outer) return {};
-
-    auto *content = signed_outer->content;
-    if (!content || content->present != Ieee1609Dot2Content_PR_signedData) return {};
-    auto *sd = content->choice.signedData;
-    if (!sd || !sd->tbsData || !sd->tbsData->payload) return {};
-    auto *payload_data = sd->tbsData->payload->data;
-    if (!payload_data || !payload_data->content ||
-        payload_data->content->present != Ieee1609Dot2Content_PR_unsecuredData)
-        return {};
-
-    return octet::bytes(&payload_data->content->choice.unsecuredData);
-}
-
 }
 
 Result<std::vector<uint8_t>> decrypt_and_unwrap(const std::vector<uint8_t> &response_bytes,
                                                 const std::vector<uint8_t> &recipient_private_key,
                                                 const std::vector<uint8_t> &request_aes_key,
-                                                uint8_t etsi_response_tag) {
+                                                uint8_t etsi_response_tag,
+                                                const CertInfo &signer_cert) {
 
     auto outer = asn_decode<Ieee1609Dot2Data_t>(asn_DEF_Ieee1609Dot2Data, response_bytes.data(),
                                                 response_bytes.size());
     if (!outer) return Error::Decode;
 
-    // Fast path: unsecuredData (synthetic tests)
-    if (outer->content && outer->content->present == Ieee1609Dot2Content_PR_unsecuredData) {
-        return octet::bytes(&outer->content->choice.unsecuredData);
-    }
-
-    // Expect encryptedData
     if (!outer->content || outer->content->present != Ieee1609Dot2Content_PR_encryptedData)
         return Error::Decode;
 
@@ -181,9 +159,13 @@ Result<std::vector<uint8_t>> decrypt_and_unwrap(const std::vector<uint8_t> &resp
                                                recipient_private_key, request_aes_key);
     if (!plaintext) return Error::Crypto;
 
-    // Unwrap signed envelope if present
-    auto inner_bytes = unwrap_signed_envelope(*plaintext);
-    if (inner_bytes.empty()) inner_bytes.assign(plaintext->begin(), plaintext->end());
+    auto signed_inner = signed_msg::unwrap(*plaintext);
+    if (!signed_inner) return Error::Decode;
+    if (!signed_msg::verify(*signed_inner, signer_cert.public_key.to_vector(),
+                            signer_cert.cert_bytes.to_vector()))
+        return Error::SignatureInvalid;
+
+    const auto &inner_bytes = signed_inner->payload_coer;
 
     // Strip EtsiTs102941Data prefix: version(0x01) + CHOICE tag
     if (inner_bytes.size() > 2 && inner_bytes[0] == 0x01 && inner_bytes[1] == etsi_response_tag) {

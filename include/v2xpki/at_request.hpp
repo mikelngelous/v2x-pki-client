@@ -73,6 +73,7 @@ struct AtResponse {
 Result<AtResponse> decode_at_response(const std::vector<uint8_t>& response_bytes,
                                       const std::vector<uint8_t>& recipient_private_key,
                                       const std::vector<uint8_t>& request_aes_key,
-                                      const std::vector<uint8_t>& request_bytes);
+                                      const std::vector<uint8_t>& request_bytes,
+                                      const CertInfo& signer_cert);
 
 } // namespace v2xpki

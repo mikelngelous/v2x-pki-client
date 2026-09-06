@@ -200,10 +200,11 @@ Result<EcRequestResult> encode_ec_request(const EcRequestDescription& desc, cons
 Result<EcResponse> decode_ec_response(const std::vector<uint8_t>& response_bytes,
                                       const std::vector<uint8_t>& recipient_private_key,
                                       const std::vector<uint8_t>& request_aes_key,
-                                      const std::vector<uint8_t>& request_bytes) {
+                                      const std::vector<uint8_t>& request_bytes,
+                                      const CertInfo& signer_cert) {
 
     auto inner_bytes = enc::decrypt_and_unwrap(response_bytes, recipient_private_key,
-                                               request_aes_key, 0x81);
+                                               request_aes_key, 0x81, signer_cert);
     if (!inner_bytes) return inner_bytes.error();
 
     auto resp = asn_decode<InnerEcResponse_t>(asn_DEF_InnerEcResponse, inner_bytes->data(),

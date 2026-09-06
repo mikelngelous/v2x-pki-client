@@ -140,7 +140,8 @@ std::optional<EnrolledEc> enrol_ec(HttpClient& http, const TrustAnchors& ta,
     }
 
     auto resp = decode_ec_response(http_resp->body, canonical_kp->private_key.to_vector(),
-                                   req->request_aes_key.to_vector(), req->encoded.to_vector());
+                                   req->request_aes_key.to_vector(), req->encoded.to_vector(),
+                                   ta.ea);
     if (!resp) {
         fprintf(stderr, "[pki-provisioner] FATAL: EC response decode failed: %s\n",
                 to_string(resp.error()));
@@ -205,7 +206,8 @@ std::optional<std::array<uint8_t, 8>> rotate_at(HttpClient& http, const TrustAnc
     }
 
     auto resp = decode_at_response(http_resp->body, at_kp->private_key.to_vector(),
-                                   req->request_aes_key.to_vector(), req->encoded.to_vector());
+                                   req->request_aes_key.to_vector(), req->encoded.to_vector(),
+                                   ta.aa);
     if (!resp) {
         fprintf(stderr, "[pki-provisioner] ERROR: decode_at_response: %s\n",
                 to_string(resp.error()));
