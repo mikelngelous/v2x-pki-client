@@ -4,6 +4,7 @@
 #include "pki-provisioner/flow.hpp"
 
 #include "v2xpki/http_client.hpp"
+#include "v2xpki/version.hpp"
 
 #include <chrono>
 #include <csignal>
@@ -29,6 +30,8 @@ struct Config {
     std::vector<int64_t> psids = {36, 37, 137, 138, 139, 140};
     int64_t ec_validity_days = 30;
     bool oneshot = false;
+    std::string dump_dir; // empty -> no wire dump
+    bool dump_keys = false; // CLI flag only: an env var must not be able to turn this on
 };
 
 static std::string env_or(const char *name, const std::string &def) {
@@ -41,6 +44,7 @@ static Config parse_config(int argc, char *argv[]) {
     cfg.pki_base_url = env_or("PKI_BASE_URL", cfg.pki_base_url);
     cfg.tlm_hid8 = env_or("TLM_HID8", cfg.tlm_hid8);
     cfg.output_dir = env_or("AT_OUTPUT_DIR", cfg.output_dir);
+    cfg.dump_dir = env_or("WIRE_DUMP_DIR", cfg.dump_dir);
 
     const char *vh = getenv("AT_VALIDITY_HOURS");
     if (vh) cfg.validity_period_hours = std::atol(vh);
@@ -57,6 +61,10 @@ static Config parse_config(int argc, char *argv[]) {
             cfg.pki_base_url = argv[++i];
         else if (arg == "--tlm-hid8" && i + 1 < argc)
             cfg.tlm_hid8 = argv[++i];
+        else if (arg == "--dump-dir" && i + 1 < argc)
+            cfg.dump_dir = argv[++i];
+        else if (arg == "--dump-private-keys-insecure")
+            cfg.dump_keys = true;
         else if ((arg == "--output" || arg == "-o") && i + 1 < argc)
             cfg.output_dir = argv[++i];
         else if (arg == "--validity-hours" && i + 1 < argc)
@@ -81,6 +89,18 @@ static Config parse_config(int argc, char *argv[]) {
                    "  AT_ROTATION_RATIO, EC_VALIDITY_DAYS\n");
             exit(0);
         }
+    }
+
+    if (cfg.dump_keys) {
+        if (cfg.dump_dir.empty()) {
+            fprintf(stderr,
+                    "[pki-provisioner] FATAL: --dump-private-keys-insecure needs --dump-dir\n");
+            exit(2);
+        }
+        fprintf(stderr,
+                "[pki-provisioner] WARNING: writing PRIVATE KEY material to %s — this station is "
+                "disposable, never reuse it and never publish that directory.\n",
+                cfg.dump_dir.c_str());
     }
 
     return cfg;
@@ -109,14 +129,18 @@ int main(int argc, char *argv[]) {
     mkdir(cfg.output_dir.c_str(), 0755);
 
     printf("\n[pki-provisioner] === Trust discovery ===\n");
+    provisioning::WireDump dump(cfg.dump_dir, cfg.dump_keys);
+    dump.meta("pki_base_url", cfg.pki_base_url);
+    dump.meta("client_version", v2xpki::kVersion);
+
     auto anchors = provisioning::discover(cfg.pki_base_url, cfg.tlm_hid8, cfg.output_dir);
     if (!anchors) return 1;
-    if (!provisioning::write_anchors(*anchors, cfg.output_dir)) return 1;
+    if (!provisioning::write_anchors(*anchors, cfg.output_dir, dump)) return 1;
 
     HttpClient http(HttpClientConfig{"", std::chrono::seconds{30}, true});
 
     printf("\n[pki-provisioner] === EC Enrollment ===\n");
-    auto ec = provisioning::enrol_ec(http, *anchors, cfg.psids, cfg.ec_validity_days);
+    auto ec = provisioning::enrol_ec(http, *anchors, cfg.psids, cfg.ec_validity_days, dump);
     if (!ec) return 1;
 
     int rotation_count = 0;
@@ -125,7 +149,8 @@ int main(int argc, char *argv[]) {
         printf("\n[pki-provisioner] === AT Rotation #%d ===\n", rotation_count);
 
         auto hid8 = provisioning::rotate_at(http, *anchors, *ec, cfg.psids,
-                                            cfg.validity_period_hours, cfg.output_dir);
+                                            cfg.validity_period_hours, cfg.output_dir, dump);
+        if (hid8) dump.flush();
         if (!hid8) {
             if (cfg.oneshot) return 1;
             fprintf(stderr, "[pki-provisioner] rotation failed, retrying in 60s\n");

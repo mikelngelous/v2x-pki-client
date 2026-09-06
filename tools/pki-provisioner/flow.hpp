@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "pki-provisioner/wire_dump.hpp"
+
 #include "v2xpki/http_client.hpp"
 #include "v2xpki/key_store.hpp"
 #include "v2xpki/trust_chain.hpp"
@@ -28,7 +30,7 @@ struct TrustAnchors {
 std::optional<TrustAnchors> discover(const std::string& base_url, const std::string& tlm_hid8,
                                      const std::string& work_dir);
 
-bool write_anchors(const TrustAnchors& ta, const std::string& output_dir);
+bool write_anchors(const TrustAnchors& ta, const std::string& output_dir, WireDump& dump);
 
 struct EnrolledEc {
     v2xpki::CertInfo cert;
@@ -36,12 +38,13 @@ struct EnrolledEc {
 };
 
 std::optional<EnrolledEc> enrol_ec(v2xpki::HttpClient& http, const TrustAnchors& ta,
-                                   const std::vector<int64_t>& psids, int64_t validity_days);
+                                   const std::vector<int64_t>& psids, int64_t validity_days,
+                                   WireDump& dump);
 
 std::optional<std::array<uint8_t, 8>> rotate_at(v2xpki::HttpClient& http, const TrustAnchors& ta,
                                                 const EnrolledEc& ec,
                                                 const std::vector<int64_t>& psids,
                                                 int64_t validity_hours,
-                                                const std::string& output_dir);
+                                                const std::string& output_dir, WireDump& dump);
 
 } // namespace provisioning

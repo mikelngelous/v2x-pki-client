@@ -89,7 +89,7 @@ std::optional<TrustAnchors> discover(const std::string& base_url, const std::str
     return ta;
 }
 
-bool write_anchors(const TrustAnchors& ta, const std::string& output_dir) {
+bool write_anchors(const TrustAnchors& ta, const std::string& output_dir, WireDump& dump) {
     if (!atomic_write(output_dir + "/AA.coer", ta.aa.cert_bytes.to_vector())) {
         fprintf(stderr, "[pki-provisioner] FATAL: cannot write AA.coer\n");
         return false;
@@ -100,12 +100,35 @@ bool write_anchors(const TrustAnchors& ta, const std::string& output_dir) {
         fprintf(stderr, "[pki-provisioner] FATAL: cannot write RCA.coer\n");
         return false;
     }
+    dump.record("ea_cert", "static", ta.ea.cert_bytes.to_vector());
+    dump.record("aa_cert", "static", ta.aa.cert_bytes.to_vector());
+    dump.record("rca_cert", "static", ta.rca.cert_bytes.to_vector());
+    dump.meta("ea_hashed_id_8", hex8(ta.ea.hashed_id_8));
+    dump.meta("aa_hashed_id_8", hex8(ta.aa.hashed_id_8));
+    dump.meta("rca_hashed_id_8", hex8(ta.rca.hashed_id_8));
+
     printf("[pki-provisioner] Wrote RCA.coer (%zuB)\n", ta.rca.cert_bytes.size());
     return true;
 }
 
+namespace {
+
+// libcurl preserves the server's casing, so match case-insensitively.
+std::string header_of(const HttpResponse& r, const std::string& name) {
+    for (const auto& [k, v] : r.headers) {
+        std::string lower;
+        for (char c : k)
+            lower += static_cast<char>(tolower(c));
+        if (lower == name) return v;
+    }
+    return {};
+}
+
+} // namespace
+
 std::optional<EnrolledEc> enrol_ec(HttpClient& http, const TrustAnchors& ta,
-                                   const std::vector<int64_t>& psids, int64_t validity_days) {
+                                   const std::vector<int64_t>& psids, int64_t validity_days,
+                                   WireDump& dump) {
     auto canonical_kp = crypto::generate_keypair();
     if (!canonical_kp) {
         fprintf(stderr, "[pki-provisioner] FATAL: EC keygen failed\n");
@@ -125,6 +148,9 @@ std::optional<EnrolledEc> enrol_ec(HttpClient& http, const TrustAnchors& ta,
         return std::nullopt;
     }
     printf("[pki-provisioner] EC request: %zuB\n", req->encoded.size());
+    dump.record("ec_request", "sent", req->encoded.to_vector(),
+                "exact bytes POSTed; requestHash = leftmost 16 octets of this sha256", 0,
+                "application/x-its-request");
 
     auto http_resp = http.post(ta.ec_url, req->encoded.to_vector());
     if (!http_resp) {
@@ -138,6 +164,14 @@ std::optional<EnrolledEc> enrol_ec(HttpClient& http, const TrustAnchors& ta,
         log_text_body(http_resp->body);
         return std::nullopt;
     }
+
+    dump.record_key("ec_request_aes_key", req->request_aes_key.to_vector(),
+                    "AES-128 key of the EC request; the response reuses it as PSK");
+    dump.record_key("canonical_private_key", canonical_kp->private_key.to_vector(),
+                    "station canonical private key (SEC1 scalar)");
+    dump.record("ec_response", "received", http_resp->body,
+                "outer-encrypted; the inner PDU needs the per-request AES key, not dumped",
+                http_resp->status_code, header_of(*http_resp, "content-type"));
 
     auto resp = decode_ec_response(http_resp->body, canonical_kp->private_key.to_vector(),
                                    req->request_aes_key.to_vector(), req->encoded.to_vector(),
@@ -153,6 +187,11 @@ std::optional<EnrolledEc> enrol_ec(HttpClient& http, const TrustAnchors& ta,
         return std::nullopt;
     }
 
+    dump.record("ec_cert", "received", resp->certificate->cert_bytes.to_vector(),
+                "issued EC, extracted from ec_response");
+    dump.meta("ec_hashed_id_8", hex8(resp->certificate->hashed_id_8));
+    dump.meta("curve", to_string(resp->certificate->curve));
+
     EnrolledEc ec;
     ec.cert = *resp->certificate;
     ec.canonical_kp = *canonical_kp;
@@ -166,7 +205,7 @@ std::optional<std::array<uint8_t, 8>> rotate_at(HttpClient& http, const TrustAnc
                                                 const EnrolledEc& ec,
                                                 const std::vector<int64_t>& psids,
                                                 int64_t validity_hours,
-                                                const std::string& output_dir) {
+                                                const std::string& output_dir, WireDump& dump) {
     auto at_kp = crypto::generate_keypair(ec.cert.curve);
     if (!at_kp) {
         fprintf(stderr, "[pki-provisioner] ERROR: AT keygen failed\n");
@@ -191,6 +230,10 @@ std::optional<std::array<uint8_t, 8>> rotate_at(HttpClient& http, const TrustAnc
         return std::nullopt;
     }
     printf("[pki-provisioner] AT request: %zuB\n", req->encoded.size());
+    dump.record(
+        "at_request", "sent", req->encoded.to_vector(),
+        "exact bytes POSTed; carries the PoP and keyTag; requestHash = leftmost 16 of this sha256",
+        0, "application/x-its-request");
 
     auto http_resp = http.post(ta.at_url, req->encoded.to_vector());
     if (!http_resp) {
@@ -204,6 +247,14 @@ std::optional<std::array<uint8_t, 8>> rotate_at(HttpClient& http, const TrustAnc
                 http_resp->status_code);
         return std::nullopt;
     }
+
+    dump.record_key("at_request_aes_key", req->request_aes_key.to_vector(),
+                    "AES-128 key of the AT request; the response reuses it as PSK");
+    dump.record_key("at_private_key", at_kp->private_key.to_vector(),
+                    "AT private key (SEC1 scalar)");
+    dump.record("at_response", "received", http_resp->body,
+                "outer-encrypted; the inner PDU needs the per-request AES key, not dumped",
+                http_resp->status_code, header_of(*http_resp, "content-type"));
 
     auto resp = decode_at_response(http_resp->body, at_kp->private_key.to_vector(),
                                    req->request_aes_key.to_vector(), req->encoded.to_vector(),
@@ -223,7 +274,11 @@ std::optional<std::array<uint8_t, 8>> rotate_at(HttpClient& http, const TrustAnc
         return std::nullopt;
     }
 
+    dump.record("at_cert", "received", resp->certificate->cert_bytes.to_vector(),
+                "issued AT, extracted from at_response");
+
     auto hid8 = hid8_of(resp->certificate->cert_bytes.to_vector());
+    dump.meta("at_hashed_id_8", hex8(hid8));
 
     if (!atomic_write(output_dir + "/AT.coer", resp->certificate->cert_bytes.to_vector())) {
         fprintf(stderr, "[pki-provisioner] ERROR: cannot write AT.coer\n");
