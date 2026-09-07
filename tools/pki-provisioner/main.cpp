@@ -149,8 +149,7 @@ int main(int argc, char *argv[]) {
     HttpClient http(HttpClientConfig{"", std::chrono::seconds{30}, true});
 
     printf("\n[pki-provisioner] === EC Enrollment ===\n");
-    auto ec = provisioning::enrol_ec(http, *anchors, cfg.psids, cfg.ec_validity_days, dump,
-                                     cfg.curve);
+    auto ec = provisioning::enrol_ec(http, *anchors, cfg.ec_validity_days, dump, cfg.curve);
     if (!ec) return 1;
 
     int rotation_count = 0;

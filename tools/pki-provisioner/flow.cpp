@@ -126,8 +126,7 @@ std::string header_of(const HttpResponse& r, const std::string& name) {
 
 } // namespace
 
-std::optional<EnrolledEc> enrol_ec(HttpClient& http, const TrustAnchors& ta,
-                                   const std::vector<int64_t>& psids, int64_t validity_days,
+std::optional<EnrolledEc> enrol_ec(HttpClient& http, const TrustAnchors& ta, int64_t validity_days,
                                    WireDump& dump, Curve curve) {
     auto canonical_kp = crypto::generate_keypair(curve);
     if (!canonical_kp) {
@@ -138,7 +137,7 @@ std::optional<EnrolledEc> enrol_ec(HttpClient& http, const TrustAnchors& ta,
     EcRecord rec;
     rec.canonical_public_key = canonical_kp->public_key;
     rec.ea_hashed_id_8 = ta.ea.hashed_id_8;
-    rec.requested_psids = psids;
+    rec.requested_psids = {kPsidScr};
     rec.validity_period_days = validity_days;
     rec.curve = curve;
 

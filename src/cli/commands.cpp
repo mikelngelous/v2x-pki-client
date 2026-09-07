@@ -481,7 +481,7 @@ int cmd_enrol(const Args &a) {
     EcRecord rec;
     rec.canonical_public_key = kp.public_key;
     rec.ea_hashed_id_8 = ea_hid8;
-    rec.requested_psids = {36};
+    rec.requested_psids = {kPsidScr};
     rec.validity_period_days = 30;
     rec.curve = curve;
     rec.its_id = canonical_id;

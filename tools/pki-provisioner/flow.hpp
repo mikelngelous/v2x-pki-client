@@ -37,9 +37,10 @@ struct EnrolledEc {
     v2xpki::KeyPair canonical_kp;
 };
 
+// No PSID parameter: TS 103 097 §7.2.2 fixes the EC's appPermissions to certificate-request.
 std::optional<EnrolledEc> enrol_ec(v2xpki::HttpClient& http, const TrustAnchors& ta,
-                                   const std::vector<int64_t>& psids, int64_t validity_days,
-                                   WireDump& dump, v2xpki::Curve curve = v2xpki::Curve::NistP256);
+                                   int64_t validity_days, WireDump& dump,
+                                   v2xpki::Curve curve = v2xpki::Curve::NistP256);
 
 std::optional<std::array<uint8_t, 8>> rotate_at(v2xpki::HttpClient& http, const TrustAnchors& ta,
                                                 const EnrolledEc& ec,

@@ -366,7 +366,7 @@ TEST_F(CastellTest, E2_EcRequestToCastell) {
     EcRecord rec;
     rec.canonical_public_key = kp->public_key;
     rec.ea_hashed_id_8 = ea_hid8;
-    rec.requested_psids = {36};
+    rec.requested_psids = {kPsidScr};
     rec.validity_period_days = 30;
 
     auto result = client.request_enrolment_credential(handle, rec);
