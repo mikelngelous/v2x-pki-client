@@ -43,14 +43,19 @@ bool atomic_write(const std::string &path, const std::vector<uint8_t> &data) {
     return true;
 }
 
-bool atomic_write_key_pem(const std::string &path, const std::vector<uint8_t> &private_key) {
+bool atomic_write_key_pem(const std::string &path, const std::vector<uint8_t> &private_key,
+                          v2xpki::Curve curve) {
+    const bool brainpool = curve == v2xpki::Curve::BrainpoolP256r1;
+    const int nid = brainpool ? NID_brainpoolP256r1 : NID_X9_62_prime256v1;
+    const char *group_name = brainpool ? "brainpoolP256r1" : "prime256v1";
+
     BIGNUM *bn_priv = BN_bin2bn(private_key.data(), static_cast<int>(private_key.size()), nullptr);
     if (!bn_priv) {
         fprintf(stderr, "[pki-provisioner] ERROR: BN_bin2bn failed\n");
         return false;
     }
 
-    EC_GROUP *grp = EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1);
+    EC_GROUP *grp = EC_GROUP_new_by_curve_name(nid);
     EC_POINT *pub = EC_POINT_new(grp);
     BN_CTX *bnctx = BN_CTX_new();
     bool point_ok = grp && pub && bnctx &&
@@ -73,7 +78,7 @@ bool atomic_write_key_pem(const std::string &path, const std::vector<uint8_t> &p
     }
 
     OSSL_PARAM_BLD *bld = OSSL_PARAM_BLD_new();
-    OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_GROUP_NAME, "prime256v1", 0);
+    OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_GROUP_NAME, group_name, 0);
     OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_PRIV_KEY, bn_priv);
     OSSL_PARAM_BLD_push_octet_string(bld, OSSL_PKEY_PARAM_PUB_KEY, pub_buf.data(), pub_buf.size());
     OSSL_PARAM *params = OSSL_PARAM_BLD_to_param(bld);

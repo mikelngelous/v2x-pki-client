@@ -31,6 +31,7 @@ struct Config {
     int64_t ec_validity_days = 30;
     bool oneshot = false;
     std::string dump_dir; // empty -> no wire dump
+    Curve curve = Curve::NistP256;
     bool dump_keys = false; // CLI flag only: an env var must not be able to turn this on
 };
 
@@ -65,7 +66,15 @@ static Config parse_config(int argc, char *argv[]) {
             cfg.dump_dir = argv[++i];
         else if (arg == "--dump-private-keys-insecure")
             cfg.dump_keys = true;
-        else if ((arg == "--output" || arg == "-o") && i + 1 < argc)
+        else if (arg == "--curve" && i + 1 < argc) {
+            std::string c = argv[++i];
+            if (c == "brainpool-p256r1")
+                cfg.curve = Curve::BrainpoolP256r1;
+            else if (c != "nist-p256") {
+                fprintf(stderr, "[pki-provisioner] FATAL: unsupported curve '%s'\n", c.c_str());
+                exit(2);
+            }
+        } else if ((arg == "--output" || arg == "-o") && i + 1 < argc)
             cfg.output_dir = argv[++i];
         else if (arg == "--validity-hours" && i + 1 < argc)
             cfg.validity_period_hours = std::atol(argv[++i]);
@@ -140,7 +149,8 @@ int main(int argc, char *argv[]) {
     HttpClient http(HttpClientConfig{"", std::chrono::seconds{30}, true});
 
     printf("\n[pki-provisioner] === EC Enrollment ===\n");
-    auto ec = provisioning::enrol_ec(http, *anchors, cfg.psids, cfg.ec_validity_days, dump);
+    auto ec = provisioning::enrol_ec(http, *anchors, cfg.psids, cfg.ec_validity_days, dump,
+                                     cfg.curve);
     if (!ec) return 1;
 
     int rotation_count = 0;

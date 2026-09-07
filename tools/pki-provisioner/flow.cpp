@@ -128,8 +128,8 @@ std::string header_of(const HttpResponse& r, const std::string& name) {
 
 std::optional<EnrolledEc> enrol_ec(HttpClient& http, const TrustAnchors& ta,
                                    const std::vector<int64_t>& psids, int64_t validity_days,
-                                   WireDump& dump) {
-    auto canonical_kp = crypto::generate_keypair();
+                                   WireDump& dump, Curve curve) {
+    auto canonical_kp = crypto::generate_keypair(curve);
     if (!canonical_kp) {
         fprintf(stderr, "[pki-provisioner] FATAL: EC keygen failed\n");
         return std::nullopt;
@@ -140,6 +140,7 @@ std::optional<EnrolledEc> enrol_ec(HttpClient& http, const TrustAnchors& ta,
     rec.ea_hashed_id_8 = ta.ea.hashed_id_8;
     rec.requested_psids = psids;
     rec.validity_period_days = validity_days;
+    rec.curve = curve;
 
     auto desc = assemble_ec_request(rec, std::chrono::system_clock::now());
     auto req = encode_ec_request(desc, ta.ea, canonical_kp->private_key.to_vector());
@@ -284,7 +285,8 @@ std::optional<std::array<uint8_t, 8>> rotate_at(HttpClient& http, const TrustAnc
         fprintf(stderr, "[pki-provisioner] ERROR: cannot write AT.coer\n");
         return std::nullopt;
     }
-    if (!atomic_write_key_pem(output_dir + "/AT.key", at_kp->private_key.to_vector())) {
+    if (!atomic_write_key_pem(output_dir + "/AT.key", at_kp->private_key.to_vector(),
+                              ec.cert.curve)) {
         fprintf(stderr, "[pki-provisioner] ERROR: cannot write AT.key\n");
         return std::nullopt;
     }
