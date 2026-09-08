@@ -334,32 +334,6 @@ Result<TrustTopology> PkiClient::discover_trust() {
     return result;
 }
 
-Result<std::vector<CertInfo>> PkiClient::fetch_ectl() {
-    // Use canonical path if TLM HID8 is available
-    std::string tlm_hex = impl_->config.tlm_hid8;
-    if (tlm_hex.empty() && impl_->topology && impl_->topology->tlm)
-        tlm_hex = hid8_hex_upper(impl_->topology->tlm->hashed_id_8);
-
-    std::string url = tlm_hex.empty() ? (impl_->config.tlm_url + "/ectl")
-                                      : (impl_->config.tlm_url + "/getectl/" + tlm_hex);
-
-    auto resp = impl_->http.get(url);
-    if (!resp) return resp.error();
-    if (resp->status_code != 200) return Error::HttpStatus;
-
-    auto topo = decode_ectl(resp->body);
-    if (!topo) return topo.error();
-
-    std::vector<CertInfo> certs;
-    for (const auto& rca : topo->rcas)
-        certs.push_back(rca);
-    for (const auto& ea : topo->eas)
-        certs.push_back(ea.cert);
-    for (const auto& aa : topo->aas)
-        certs.push_back(aa.cert);
-    return certs;
-}
-
 Result<CrlContents> PkiClient::fetch_crl(const std::array<uint8_t, 8>& rca_hid8) {
     auto hex = hid8_hex_upper(rca_hid8);
     auto dc_url = impl_->topology

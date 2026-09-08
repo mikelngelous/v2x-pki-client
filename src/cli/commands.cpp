@@ -13,10 +13,8 @@
 #include "internal/cert_parse.hpp"
 
 extern "C" {
-#include "Ieee1609Dot2Data.h"
 #include "Ieee1609Dot2Content.h"
 #include "SignedData.h"
-#include "SignerIdentifier.h"
 #include "asn_application.h"
 }
 
@@ -221,61 +219,56 @@ int cmd_fetch_ectl(const Args &a) {
         return 1;
     }
 
-    void *structure = nullptr;
-    auto dr = asn_decode(nullptr, ATS_CANONICAL_OER, &asn_DEF_Ieee1609Dot2Data, &structure,
-                         resp->body.data(), resp->body.size());
-    if (dr.code != RC_OK || !structure) {
-        if (structure) ASN_STRUCT_FREE(asn_DEF_Ieee1609Dot2Data, structure);
-        std::cerr << "error: failed to decode ECTL as Ieee1609Dot2Data\n";
+    std::optional<CertInfo> tlm;
+    if (!a.tlm_cert.empty()) {
+        auto tlm_bytes = read_file(a.tlm_cert);
+        if (tlm_bytes.empty()) {
+            std::cerr << "error: cannot read TLM cert from " << a.tlm_cert << "\n";
+            return 1;
+        }
+        tlm = cert::from_coer(tlm_bytes);
+        if (tlm->cert_bytes.empty()) {
+            std::cerr << "error: TLM cert at " << a.tlm_cert << " does not decode\n";
+            return 1;
+        }
+    }
+
+    auto topo = tlm ? decode_ectl(resp->body, tlm->public_key.to_vector(),
+                                  tlm->cert_bytes.to_vector())
+                    : decode_ectl(resp->body);
+    if (!topo) {
+        std::cerr << "error: failed to decode ECTL: " << to_string(topo.error()) << "\n";
+        return 1;
+    }
+    // No default here: without --tlm-cert nothing verified, and that must never read as success.
+    bool verified = tlm.has_value() && topo->ectl_signature_verified;
+    if (tlm && !verified) {
+        std::cerr << "error: ECTL signature verification failed against " << a.tlm_cert << "\n";
         return 1;
     }
 
-    auto *outer = static_cast<Ieee1609Dot2Data_t *>(structure);
-    bool is_signed = outer->content && outer->content->present == Ieee1609Dot2Content_PR_signedData;
-
     if (a.json) {
         std::cout << "{\"size\":" << resp->body.size()
-                  << ",\"protocol_version\":" << outer->protocolVersion
-                  << ",\"is_signed\":" << (is_signed ? "true" : "false");
+                  << ",\"verified\":" << (verified ? "true" : "false")
+                  << ",\"rcas\":" << topo->rcas.size() << ",\"eas\":" << topo->eas.size()
+                  << ",\"aas\":" << topo->aas.size() << ",\"dcs\":" << topo->dcs.size()
+                  << ",\"next_update\":" << topo->ectl_next_update
+                  << ",\"expired\":" << (topo->ectl_expired ? "true" : "false") << "}\n";
     } else {
         std::cout << "ECTL (" << resp->body.size() << "B)\n"
-                  << "  Protocol:  " << outer->protocolVersion << "\n"
-                  << "  Signed:    " << (is_signed ? "yes" : "no") << "\n";
+                  << "  Verified:  " << (verified ? "yes" : "no (no --tlm-cert given)") << "\n"
+                  << "  RCAs:      " << topo->rcas.size() << "\n"
+                  << "  EAs:       " << topo->eas.size() << "\n"
+                  << "  AAs:       " << topo->aas.size() << "\n"
+                  << "  DCs:       " << topo->dcs.size() << "\n"
+                  << "  Expired:   " << (topo->ectl_expired ? "yes" : "no") << "\n";
     }
-
-    if (is_signed && outer->content->choice.signedData) {
-        auto *sd = outer->content->choice.signedData;
-        if (sd->signer && sd->signer->present == SignerIdentifier_PR_digest) {
-            auto &d = sd->signer->choice.digest;
-            if (d.buf && d.size == 8) {
-                std::string signer_hex = bytes_to_hex(d.buf, 8);
-                if (a.json)
-                    std::cout << ",\"signer_hid8\":\"" << signer_hex << "\"";
-                else
-                    std::cout << "  Signer:    " << signer_hex << "\n";
-            }
-        }
-
-        if (!a.tlm_cert.empty()) {
-            auto tlm_bytes = read_file(a.tlm_cert);
-            if (!tlm_bytes.empty()) {
-                parse_cert_summary(tlm_bytes);
-                if (a.json)
-                    std::cout << ",\"tlm_verify\":\"available\"";
-                else
-                    std::cout << "  TLM cert:  loaded (" << tlm_bytes.size() << "B)\n";
-            }
-        }
-    }
-
-    if (a.json) std::cout << "}" << '\n';
 
     if (!a.out.empty()) {
         write_file(a.out, resp->body);
         if (!a.json) std::cout << "  Saved:     " << a.out << "\n";
     }
 
-    ASN_STRUCT_FREE(asn_DEF_Ieee1609Dot2Data, structure);
     return 0;
 }
 

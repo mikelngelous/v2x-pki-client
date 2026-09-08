@@ -69,9 +69,6 @@ public:
     // Updates internal ea_url/aa_url from discovered entries.
     Result<TrustTopology> discover_trust();
 
-    // --- Legacy trust list (kept for backward compat) ---
-
-    Result<std::vector<CertInfo>> fetch_ectl();
     // Entries are HashedId8 of CA certificates, not certificates.
     Result<CrlContents> fetch_crl(const std::array<uint8_t, 8>& rca_hid8);
 
