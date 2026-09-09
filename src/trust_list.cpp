@@ -15,7 +15,6 @@
 #include <cstring>
 #include <ctime>
 #include <iomanip>
-#include <iostream>
 #include <sstream>
 
 extern "C" {
@@ -86,17 +85,14 @@ void parse_ctl_entries(const CtlFormat_t *ctl, TrustTopology &topo, bool is_ectl
     else
         topo.ctl_next_update = next_update;
 
-    // Check freshness: warn if expired, but do NOT reject.
+    // No PkiClientConfig::log at this layer, so flag on TrustTopology and let the caller decide.
     if (next_update > 0) {
         auto now_tai = unix_to_tai_seconds(static_cast<int64_t>(time(nullptr)));
         if (now_tai > static_cast<int64_t>(next_update)) {
-            if (is_ectl) {
+            if (is_ectl)
                 topo.ectl_expired = true;
-                std::cerr << "[trust_list] WARNING: ECTL nextUpdate expired\n";
-            } else {
+            else
                 topo.ctl_expired = true;
-                std::cerr << "[trust_list] WARNING: CTL nextUpdate expired\n";
-            }
         }
     }
 

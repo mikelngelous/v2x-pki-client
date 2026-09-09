@@ -3,6 +3,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -30,6 +31,7 @@ struct PkiClientConfig {
     std::string tlm_hid8; // pinned TLM HashedId8 (uppercase hex)
     std::chrono::seconds timeout{30};
     bool verify_tls = true;
+    std::function<void(const std::string&)> log; // discover_trust() diagnostics; empty = silent
 };
 
 class PkiClient {

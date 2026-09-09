@@ -288,6 +288,7 @@ int cmd_discover(const Args &a) {
     cfg.keystore_dir = ks_dir;
     cfg.timeout = 15s;
     cfg.verify_tls = true;
+    cfg.log = [](const std::string &m) { std::cerr << m; };
 
     PkiClient client(cfg);
     auto topo = client.discover_trust();

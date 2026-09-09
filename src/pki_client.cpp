@@ -46,6 +46,13 @@ std::string find_dc_url(const std::vector<DcInfo>& dcs, const std::array<uint8_t
     return fallback_url;
 }
 
+template <typename... Args> void log(const PkiClientConfig& cfg, Args&&... args) {
+    if (!cfg.log) return;
+    std::ostringstream oss;
+    (oss << ... << args);
+    cfg.log(oss.str());
+}
+
 }
 
 // Distinguishes "the caller's trust_dir is missing an anchor" from "the signature is bad".
@@ -212,14 +219,16 @@ Result<TrustTopology> PkiClient::discover_trust() {
     CertInfo tlm_cert;
     if (!tlm_hid8_hex.empty()) {
         // Canonical: GET /gettlmcertificate/{TLM_HID8}
-        std::cerr << "[discover] GET " << base_url << "/gettlmcertificate/" << tlm_hid8_hex << "\n";
+        log(impl_->config, "[discover] GET ", base_url, "/gettlmcertificate/", tlm_hid8_hex, "\n");
         auto resp = impl_->http.get(base_url + "/gettlmcertificate/" + tlm_hid8_hex);
         if (!resp) {
-            std::cerr << "[discover] failed to fetch TLM cert: " << to_string(resp.error()) << "\n";
+            log(impl_->config, "[discover] failed to fetch TLM cert: ", to_string(resp.error()),
+                "\n");
             return resp.error();
         }
         if (resp->status_code != 200) {
-            std::cerr << "[discover] failed to fetch TLM cert (HTTP " << resp->status_code << ")\n";
+            log(impl_->config, "[discover] failed to fetch TLM cert (HTTP ", resp->status_code,
+                ")\n");
             return Error::HttpStatus;
         }
         auto ci = cert::from_coer(resp->body);
@@ -228,16 +237,16 @@ Result<TrustTopology> PkiClient::discover_trust() {
         tlm_cert = ci;
     } else {
         // Bootstrap: try /tlm endpoint (testbed shortcut) to get TLM cert
-        std::cerr << "[discover] no --tlm-hid8, bootstrapping via /tlm\n";
+        log(impl_->config, "[discover] no --tlm-hid8, bootstrapping via /tlm\n");
         auto resp = impl_->http.get(base_url + "/tlm");
         if (!resp) {
-            std::cerr << "[discover] /tlm failed: " << to_string(resp.error())
-                      << ", cannot bootstrap TLM. Provide --tlm-hid8.\n";
+            log(impl_->config, "[discover] /tlm failed: ", to_string(resp.error()),
+                ", cannot bootstrap TLM. Provide --tlm-hid8.\n");
             return resp.error();
         }
         if (resp->status_code != 200) {
-            std::cerr << "[discover] /tlm failed (HTTP " << resp->status_code
-                      << "), cannot bootstrap TLM. Provide --tlm-hid8.\n";
+            log(impl_->config, "[discover] /tlm failed (HTTP ", resp->status_code,
+                "), cannot bootstrap TLM. Provide --tlm-hid8.\n");
             return Error::HttpStatus;
         }
         auto ci = cert::from_coer(resp->body);
@@ -245,31 +254,32 @@ Result<TrustTopology> PkiClient::discover_trust() {
         ci.label = "tlm";
         tlm_cert = ci;
         tlm_hid8_hex = hid8_hex_upper(tlm_cert.hashed_id_8);
-        std::cerr << "[discover] TLM HID8 bootstrapped: " << tlm_hid8_hex << "\n";
+        log(impl_->config, "[discover] TLM HID8 bootstrapped: ", tlm_hid8_hex, "\n");
     }
 
     impl_->trust.add_cert(tlm_cert);
 
     // Fetch ECTL via canonical GET /getectl/{TLM_HID8}
-    std::cerr << "[discover] GET " << base_url << "/getectl/" << tlm_hid8_hex << "\n";
+    log(impl_->config, "[discover] GET ", base_url, "/getectl/", tlm_hid8_hex, "\n");
     auto ectl_resp = impl_->http.get(base_url + "/getectl/" + tlm_hid8_hex);
     if (!ectl_resp) {
-        std::cerr << "[discover] ECTL fetch failed: " << to_string(ectl_resp.error()) << "\n";
+        log(impl_->config, "[discover] ECTL fetch failed: ", to_string(ectl_resp.error()), "\n");
         return ectl_resp.error();
     }
     if (ectl_resp->status_code != 200) {
-        std::cerr << "[discover] ECTL fetch failed (HTTP " << ectl_resp->status_code << ")\n";
+        log(impl_->config, "[discover] ECTL fetch failed (HTTP ", ectl_resp->status_code, ")\n");
         return Error::HttpStatus;
     }
 
     auto ectl_topo = decode_ectl(ectl_resp->body, tlm_cert.public_key.to_vector(),
                                  tlm_cert.cert_bytes.to_vector());
     if (!ectl_topo) {
-        std::cerr << "[discover] ECTL decode failed\n";
+        log(impl_->config, "[discover] ECTL decode failed\n");
         return ectl_topo.error();
     }
     if (!ectl_topo->ectl_signature_verified) {
-        std::cerr << "[discover] ECTL signature verification failed — refusing to trust it\n";
+        log(impl_->config,
+            "[discover] ECTL signature verification failed — refusing to trust it\n");
         return Error::SignatureInvalid;
     }
 
@@ -284,25 +294,25 @@ Result<TrustTopology> PkiClient::discover_trust() {
     for (auto& rca : result.rcas) {
         auto dc_url = find_dc_url(result.dcs, rca.hashed_id_8, base_url);
         auto rca_hid8_hex = hid8_hex_upper(rca.hashed_id_8);
-        std::cerr << "[discover] GET " << dc_url << "/getctl/" << rca_hid8_hex << "\n";
+        log(impl_->config, "[discover] GET ", dc_url, "/getctl/", rca_hid8_hex, "\n");
         auto ctl_resp = impl_->http
                             .get(std::string(dc_url).append("/getctl/").append(rca_hid8_hex));
         if (!ctl_resp || ctl_resp->status_code != 200) {
-            std::cerr << "[discover] CTL fetch failed for RCA " << rca_hid8_hex << " (HTTP "
-                      << (ctl_resp ? ctl_resp->status_code : 0) << ")\n";
+            log(impl_->config, "[discover] CTL fetch failed for RCA ", rca_hid8_hex, " (HTTP ",
+                (ctl_resp ? ctl_resp->status_code : 0), ")\n");
             continue;
         }
 
         auto ctl_topo = decode_rca_ctl(ctl_resp->body, rca.public_key.to_vector(),
                                        rca.cert_bytes.to_vector());
         if (!ctl_topo) {
-            std::cerr << "[discover] CTL decode failed for RCA " << rca_hid8_hex << "\n";
+            log(impl_->config, "[discover] CTL decode failed for RCA ", rca_hid8_hex, "\n");
             result.ctl_signature_verified = false;
             continue;
         }
         if (!ctl_topo->ctl_signature_verified) {
-            std::cerr << "[discover] CTL signature verification failed for RCA " << rca_hid8_hex
-                      << " — skipping its EA/AA/DC\n";
+            log(impl_->config, "[discover] CTL signature verification failed for RCA ",
+                rca_hid8_hex, " — skipping its EA/AA/DC\n");
             result.ctl_signature_verified = false;
             continue;
         }
@@ -320,7 +330,7 @@ Result<TrustTopology> PkiClient::discover_trust() {
     }
 
     if (!result.ctl_signature_verified) {
-        std::cerr << "[discover] one or more RCA CTLs failed signature verification\n";
+        log(impl_->config, "[discover] one or more RCA CTLs failed signature verification\n");
         return Error::SignatureInvalid;
     }
 
