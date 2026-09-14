@@ -53,6 +53,11 @@ target_include_directories(test_response_auth PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(test_response_auth PRIVATE v2xpki-transport GTest::gtest_main)
 gtest_discover_tests(test_response_auth TEST_PREFIX pki.)
 
+add_executable(test_curve_point test_curve_point.cpp)
+target_include_directories(test_curve_point PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(test_curve_point PRIVATE v2xpki-transport GTest::gtest_main)
+gtest_discover_tests(test_curve_point TEST_PREFIX pki.)
+
 add_executable(test_whole_cert_hash test_whole_cert_hash.cpp)
 target_include_directories(test_whole_cert_hash PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_compile_definitions(test_whole_cert_hash PRIVATE
