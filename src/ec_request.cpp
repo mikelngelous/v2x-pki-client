@@ -61,15 +61,11 @@ bool validate_ec_record(const EcRecord& rec, std::string* err) {
                 "canonical_public_key must be uncompressed (0x04 prefix, correct size for curve)";
         return false;
     }
-    if (rec.requested_psids.empty()) {
-        if (err) *err = "requested_psids must not be empty";
+    if (rec.requested_psids.size() != 1 || rec.requested_psids[0] != kPsidScr) {
+        if (err)
+            *err = "EC requested_psids must be exactly {kPsidScr} (TS 103 097 §7.2.2); "
+                   "application PSIDs belong on the AT";
         return false;
-    }
-    for (auto psid : rec.requested_psids) {
-        if (psid < 0) {
-            if (err) *err = "psid values must be non-negative";
-            return false;
-        }
     }
     if (rec.validity_period_days <= 0 || rec.validity_period_days > 3650) {
         if (err) *err = "validity_period_days must be 1-3650";

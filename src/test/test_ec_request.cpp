@@ -41,9 +41,21 @@ TEST_F(EcRequestTest, ValidateOk) {
     EcRecord rec;
     rec.canonical_public_key = canonical_keys_.public_key;
     rec.ea_hashed_id_8 = ea_cert_.hashed_id_8;
-    rec.requested_psids = {36, 37};
+    rec.requested_psids = {kPsidScr};
     rec.validity_period_days = 30;
     EXPECT_TRUE(validate_ec_record(rec));
+}
+
+TEST_F(EcRequestTest, ValidateRejectsApplicationPsid) {
+    EcRecord rec;
+    rec.canonical_public_key = canonical_keys_.public_key;
+    rec.ea_hashed_id_8 = ea_cert_.hashed_id_8;
+    rec.requested_psids = {36};
+    rec.validity_period_days = 30;
+
+    std::string err;
+    EXPECT_FALSE(validate_ec_record(rec, &err));
+    EXPECT_NE(err.find("kPsidScr"), std::string::npos);
 }
 
 TEST_F(EcRequestTest, ValidateBadKey) {
@@ -76,7 +88,7 @@ TEST_F(EcRequestTest, ValidateBadValidity) {
     EcRecord rec;
     rec.canonical_public_key = canonical_keys_.public_key;
     rec.ea_hashed_id_8 = ea_cert_.hashed_id_8;
-    rec.requested_psids = {36};
+    rec.requested_psids = {kPsidScr};
     rec.validity_period_days = 0;
     EXPECT_FALSE(validate_ec_record(rec));
 
